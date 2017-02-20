@@ -1,53 +1,75 @@
 /* Copyright (C) Wuyang Zhang Feb 17 2017
 	Operating System Project 2 
-	hint: 
-	(1) investigate system library ucontext.h
-	(2) interrupt context, set an interruption time in 50ms. Implement a signal handler in which we schedule and swap
-	(3) multi-level priority queue
-*/
-
-/* 
-Userlevel context
-
-typedef struct ucontext
-  {
-    unsigned long uc_flags;
-    struct ucontext *uc_link;
-    stack_t uc_stack;
-    __sigset_t uc_sigmask;
-    mcontext_t uc_mcontext;
-  } ucontext_t;
-
-  typedef struct {
-               void  *ss_sp;     // Base address of stack 
-               int    ss_flags;  // Flags 
-               size_t ss_size;   // Number of bytes in stack 
-           } stack_t;
-
 */
            
 #include <stdlib.h>
 #include <ucontext.h>
-#include < sys/time.h>
+#include <sys/time.h>
+#include <signal.h>
+#include <stdio.h>
 
 #ifndef _MY_PTHREAD_T_H_
 #define _MY_PTHREAD_T_H_
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
-#define TIME_QUANTUM 50
+#define TIME_QUANTUM 100
 
-typedef struct _pthread_t{
+typedef int pid_t;
 
-}pthread_t
+enum THREAD_STATE{
+  READY = 0,
+  RUNNING,
+  BLOCKED,
+  WAITING,
+  TERMINATED
+};
 
-int my_pthread_create(pthread_t* thread, pthread_attr_t* attr, void*(*function)(void*), void* arg);
+int total_thread = 0;
+
+typedef struct _my_pthread_t{
+    pid_t _self_id;
+    ucontext_t _ucontext_t;
+    char stack[MIN_STACK];
+    void* (*func)(void *arg);
+    void* arg;
+    int state;
+    int priority;
+}my_pthread_t;
+
+typedef struct _my_pthread_mutex_t{
+    int test;
+}my_pthread_mutex_t;
+
+/*
+  scheduler
+  */
+typedef struct _Node
+{
+  my_pthread_t thread;
+  struct _Node* next;
+  struct _Node* prev;
+}Node;
+
+Node* head;
+Node* tail;
+Node* curr;
+
+typedef struct _schedule_t{
+    //ucontext_t main;
+    pid_t runningThread;
+    //Node* head;
+}schedule_t;
+
+schedule_t scheduler;
+
+int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void*(*function)(void*), void* arg);
 
 void my_pthread_yied();
 
 void pthread_exit(void* value_ptr);
 
-int my_pthread_join(pthread_t thread, void**value_ptr);
+int my_pthread_join(my_pthread_t thread, void**value_ptr);
 
 int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mutexattr);
 
@@ -56,5 +78,6 @@ int my_pthread_mutex_lock(my_pthread_mutex_t* mutex);
 int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex);
 
 int my_pthread_mutex_destory(my_pthread_mutex_t* mutex);
+
 
 #endif
