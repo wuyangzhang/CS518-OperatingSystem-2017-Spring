@@ -6,6 +6,9 @@
 
 #include "my_pthread_t.h"
 
+int counter = 0;
+my_pthread_mutex_t countLock;
+
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
 	node->thread = thread;
@@ -107,7 +110,7 @@ my_pthread_yied(){
 		thread->state = READY;
 		//switch to main thread
 		scheduler.runningThread = 0;
-		swapcontext(&thread->_ucontext_t, &head->thread->_ucontext_t);
+		swapcontext(&thread->_ucontext_t, &head->thread._ucontext_t);
 	}
 }
 
@@ -142,6 +145,8 @@ start(){
 	my_pthread_t t;
 	my_pthread_create(&t,NULL,NULL,NULL);
 
+	my_pthread_mutex_init(&countLock, NULL);
+
 	signal(SIGALRM,schedule);
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
@@ -153,16 +158,27 @@ start(){
 
 int
 my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mutexattr){
+	mutex->flag = 0;
 	return 0;
 }
 
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
+	while(TestAndSet(&mutex->flag, 1) == 1)
+		my_pthread_yied();
 	return 0;
+}
+
+inline int
+TestAndSet(int *old_ptr, int new){
+	int old = *old_ptr;
+	*old_ptr = new;
+	return old;
 }
 
 int 
 my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
+	mutex->flag = 0;
 	return 0;
 }
 
@@ -172,8 +188,11 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 }
 
 void* test(){
-	while(1){
-		printf("11111\n");
+	int i;
+	for(i=0; i < 1000; i++){
+		my_pthread_mutex_lock(&countLock);
+		counter++;
+		my_pthread_mutex_unlock(&countLock);
 	}
 	return NULL;
 }
@@ -200,11 +219,11 @@ int main(){
 	my_pthread_t thread3;
 
 	my_pthread_create(&thread,NULL,&test,NULL);
-	my_pthread_create(&thread2,NULL,&test2,NULL);
-	my_pthread_create(&thread3,NULL,&test3,NULL);
+	my_pthread_create(&thread2,NULL,&test,NULL);
+	my_pthread_create(&thread3,NULL,&test,NULL);
 
 	while(1){
-		//printf("main");
+		printf("counter %d", counter);
 	}
 
 	return 0;
