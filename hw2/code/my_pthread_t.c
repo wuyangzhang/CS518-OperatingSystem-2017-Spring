@@ -8,7 +8,6 @@
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
 	node->thread = thread;
-	node->thread._self_id = tail->thread._self_id + 1;
 	return node;
 }
 
@@ -17,11 +16,12 @@ void insertNode(Node* node){
 	if(head == NULL){
 		head = node;
 		tail = node;
-		return;
+		node->thread._self_id = 1;
 	}else{
 		tail->next = node;
 		node->prev = tail;
 		tail = node;
+		node->thread._self_id = tail->thread._self_id + 1;
 	}
 }
 
@@ -95,27 +95,22 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 
 void
 schedule(){
-	printf("\n\n\n\n\n");
+	printf("wuyangzhang\n\n\n\n\n");
+
 	if(total_thread > 1){
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_priority();
 		scheduler.runningThread = currThread->_self_id;
 		swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t);
+	}else if(total_thread == 1){
+		scheduler.runningThread = head->thread._self_id;
 	}
 }
 
 void
 start(){
-	//add main thread
-	//my_pthread_t* thread = (my_pthread_t*) malloc(sizeof(my_pthread_t));
-	my_pthread_t thread;
 
-	assert(getcontext(&(thread._ucontext_t)) != -1);
-
-	insertNode(createNode(thread));
-	scheduler.runningThread = thread._self_id;
 	signal(SIGALRM,schedule);
-
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
 	tick.it_value.tv_usec = 1;
@@ -163,6 +158,7 @@ int main(){
 	my_pthread_t thread;
 	my_pthread_t thread2;
 	my_pthread_create(&thread,NULL,&test,NULL);
+	my_pthread_create(&thread2,NULL,&test2,NULL);
 
 	while(1){
 		printf("main");
