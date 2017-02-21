@@ -6,8 +6,8 @@
 
 #include "my_pthread_t.h"
 
-int counter = 0;
-my_pthread_mutex_t countLock;
+static int counter = 0;
+static my_pthread_mutex_t countLock;
 
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
@@ -92,7 +92,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	thread->_ucontext_t.uc_stack.ss_size = MIN_STACK;
 	thread->_ucontext_t.uc_stack.ss_flags = 0;
 	thread->_ucontext_t.uc_flags = 0;
-	thread->_ucontext_t.uc_link = NULL;
+	thread->_ucontext_t.uc_link = &head->thread._ucontext_t;
 	thread->state = READY;
 
 	makecontext(&(thread->_ucontext_t), function, 0);
@@ -135,7 +135,12 @@ schedule(){
 		prevThread->state = READY;
 		currThread->state = RUNNING;
 		//printf("switch from thread %d to thread %d\n", prevThread->_self_id, currThread->_self_id);
-		assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
+		
+		// if(prevThread->_self_id == 0){
+			// setcontext(&currThread->_ucontext_t);
+		// }else{
+			assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
+		// }
 	}
 }
 
@@ -144,6 +149,7 @@ start(){
 
 	my_pthread_t t;
 	my_pthread_create(&t,NULL,NULL,NULL);
+	assert(getcontext(&t._ucontext_t) != -1);
 
 	my_pthread_mutex_init(&countLock, NULL);
 
@@ -164,21 +170,14 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
-	while(TestAndSet(&mutex->flag, 1) == 1)
-		my_pthread_yied();
+	while(__sync_lock_test_and_set(&mutex->flag,1))
+		//my_pthread_yied();
 	return 0;
-}
-
-inline int
-TestAndSet(int *old_ptr, int new){
-	int old = *old_ptr;
-	*old_ptr = new;
-	return old;
 }
 
 int 
 my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
-	mutex->flag = 0;
+	__sync_lock_release(&mutex->flag);
 	return 0;
 }
 
@@ -188,8 +187,9 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 }
 
 void* test(){
+	printf("thread %d is running\n", scheduler.runningThread);
 	int i;
-	for(i=0; i < 1000; i++){
+	for(i = 0; i < 10000; i++){
 		my_pthread_mutex_lock(&countLock);
 		counter++;
 		my_pthread_mutex_unlock(&countLock);
@@ -223,8 +223,9 @@ int main(){
 	my_pthread_create(&thread3,NULL,&test,NULL);
 
 	while(1){
-		printf("counter %d", counter);
+		printf("counter %d\n", counter);
 	}
 
+	printf("exit program\n");
 	return 0;
 }
