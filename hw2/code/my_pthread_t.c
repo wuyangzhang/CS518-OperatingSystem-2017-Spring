@@ -3,6 +3,7 @@
 */
 
 #include <assert.h>
+
 #include "my_pthread_t.h"
 
 Node* createNode(my_pthread_t thread){
@@ -14,7 +15,7 @@ Node* createNode(my_pthread_t thread){
 void insertNode(Node* node){
 	total_thread++;
 	if(head == NULL){
-		node->thread._self_id = 1;
+		node->thread._self_id = 0;
 		head = node;
 		tail = node;
 	}else{
@@ -47,7 +48,7 @@ findThread_robin(){
 	if(scheduler.runningThread == total_thread){
 		return findThread_id(1);
 	}else{
-		return findThread_id(scheduler.runningThread++);
+		return findThread_id(++scheduler.runningThread);
 	}
 }
 
@@ -73,7 +74,8 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	assert(getcontext(&thread->_ucontext_t) != -1);
 	thread->func = function;
 	thread->arg = arg;
-	thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
+	//thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
+	thread->_ucontext_t.uc_stack.ss_sp = malloc(MIN_STACK);
 	thread->_ucontext_t.uc_stack.ss_size = MIN_STACK;
 	thread->_ucontext_t.uc_stack.ss_flags = 0;
 	thread->_ucontext_t.uc_flags = 0;
@@ -110,7 +112,7 @@ schedule(){
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
-		swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t);
+		assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t)==0);
 	}
 	
 }
