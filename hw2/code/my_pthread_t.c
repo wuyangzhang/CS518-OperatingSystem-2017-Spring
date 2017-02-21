@@ -60,7 +60,7 @@ findThread_id(pid_t thread_id){
 my_pthread_t*
 findThread_robin(){
 	if(scheduler.runningThread == total_thread - 1){
-		return &head->thread;
+		return &head->next->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
 	}
@@ -127,6 +127,13 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 
 void
 schedule(){
+	//init main thread
+	if(head == NULL){
+		my_pthread_t mainThread;
+		my_pthread_create(&mainThread,NULL,&schedule,NULL);
+		assert(getcontext(&mainThread._ucontext_t) != -1);
+		my_pthread_mutex_init(&countLock, NULL);
+	}
 
 	if(total_thread > 1){
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
@@ -134,25 +141,18 @@ schedule(){
 		scheduler.runningThread = currThread->_self_id;
 		prevThread->state = READY;
 		currThread->state = RUNNING;
-		//printf("switch from thread %d to thread %d\n", prevThread->_self_id, currThread->_self_id);
-		
-		// if(prevThread->_self_id == 0){
-			// setcontext(&currThread->_ucontext_t);
-		// }else{
+		printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
+
+		if(prevThread->_self_id == 0){
+			setcontext(&currThread->_ucontext_t);
+		}else{
 			assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
-		// }
+		}
 	}
 }
 
 void
 start(){
-
-	my_pthread_t t;
-	my_pthread_create(&t,NULL,NULL,NULL);
-	assert(getcontext(&t._ucontext_t) != -1);
-
-	my_pthread_mutex_init(&countLock, NULL);
-
 	signal(SIGALRM,schedule);
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
@@ -171,7 +171,7 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 	while(__sync_lock_test_and_set(&mutex->flag,1))
-		//my_pthread_yied();
+		my_pthread_yied();
 	return 0;
 }
 
@@ -188,12 +188,14 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	printf("thread %d is running\n", scheduler.runningThread);
+	/*
 	int i;
-	for(i = 0; i < 10000; i++){
-		my_pthread_mutex_lock(&countLock);
-		counter++;
-		my_pthread_mutex_unlock(&countLock);
+	for(i = 0; i < 1000; i++){
+		//my_pthread_mutex_lock(&countLock);
+		//printf("counter %d\n", counter++);
+		//my_pthread_mutex_unlock(&countLock);
 	}
+	*/
 	return NULL;
 }
 
@@ -223,7 +225,7 @@ int main(){
 	my_pthread_create(&thread3,NULL,&test,NULL);
 
 	while(1){
-		printf("counter %d\n", counter);
+		//
 	}
 
 	printf("exit program\n");
