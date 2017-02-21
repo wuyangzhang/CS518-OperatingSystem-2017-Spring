@@ -28,8 +28,17 @@ void insertNode(Node* node){
 	}
 }
 
-void removeNode(Node* node){
-
+void removeNode(pid_t thread_id){
+	total_thread--;
+	curr = head;
+	while(curr != NULL){
+		if(curr->thread._self_id == thread_id){
+			free(curr->thread._ucontext_t.uc_stack.ss_sp);
+			curr->prev->next = curr->next;
+			curr->next->prev = curr->prev;
+			free(curr);
+		}
+	}
 }
 
 
@@ -93,11 +102,19 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 void
 my_pthread_yied(){
 
+	if(scheduler.runningThread != -1){
+		my_pthread_t* thread = findThread_id(scheduler.runningThread);
+		thread->state = READY;
+		//switch to main thread
+		scheduler.runningThread = 0;
+		swapcontext(&thread->_ucontext_t, &head->thread->_ucontext_t);
+	}
 }
 
 void
 my_pthread_exit(void* value_ptr){
-	free(((my_pthread_t*) value_ptr)->_ucontext_t.uc_stack.ss_sp);
+	pid_t thread_id = *((pid_t *) value_ptr);
+	removeNode(thread_id);
 }
 
 int
@@ -109,14 +126,14 @@ void
 schedule(){
 
 	if(total_thread > 1){
-		
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
-		printf("switch from thread %d to thread %d\n", prevThread->_self_id, currThread->_self_id);
+		prevThread->state = READY;
+		currThread->state = RUNNING;
+		//printf("switch from thread %d to thread %d\n", prevThread->_self_id, currThread->_self_id);
 		assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
 	}
-	
 }
 
 void
