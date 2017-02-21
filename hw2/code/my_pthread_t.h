@@ -13,7 +13,7 @@
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
-#define TIME_QUANTUM 100
+#define TIME_QUANTUM 1000
 
 typedef int pid_t;
 
@@ -38,7 +38,7 @@ typedef struct _my_pthread_t{
 }my_pthread_t;
 
 typedef struct _my_pthread_mutex_t{
-    int test;
+    int flag;
 }my_pthread_mutex_t;
 
 /*
@@ -52,7 +52,7 @@ typedef struct _Node
 }Node;
 
 Node* head;
-Node* tail;
+//Node* tail;
 Node* curr;
 
 typedef struct _schedule_t{
