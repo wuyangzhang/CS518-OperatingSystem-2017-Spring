@@ -122,6 +122,9 @@ schedule(){
 void
 start(){
 
+	my_pthread_t t;
+	my_pthread_create(&t,NULL,NULL,NULL);
+
 	signal(SIGALRM,schedule);
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
@@ -173,7 +176,8 @@ void* test3(){
 }
 
 int main(){
-	
+	start();
+
 	my_pthread_t thread;
 	my_pthread_t thread2;
 	my_pthread_t thread3;
@@ -182,7 +186,6 @@ int main(){
 	my_pthread_create(&thread2,NULL,&test2,NULL);
 	my_pthread_create(&thread3,NULL,&test3,NULL);
 
-	start();
 	while(1){
 		//printf("main");
 	}
