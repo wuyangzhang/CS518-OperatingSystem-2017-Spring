@@ -45,8 +45,8 @@ findThread_id(pid_t thread_id){
 
 my_pthread_t*
 findThread_robin(){
-	if(scheduler.runningThread == total_thread){
-		return findThread_id(1);
+	if(scheduler.runningThread == total_thread - 1){
+		return &head->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
 	}
@@ -108,7 +108,7 @@ void
 schedule(){
 
 	if(total_thread > 1){
-		printf("multiple thread\n\n\n\n\n");
+		printf("**************multiple thread************\n");
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
@@ -151,14 +151,14 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	while(1){
-		printf("create thread1");
+		printf("11111\n");
 	}
 	return NULL;
 }
 
 void* test2(){
 	while(1){
-		printf("create thread2");
+		printf("22222\n");
 	}
 	return NULL;
 }
