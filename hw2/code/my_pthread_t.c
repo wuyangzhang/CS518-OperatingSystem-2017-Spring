@@ -17,12 +17,14 @@ void insertNode(Node* node){
 	if(head == NULL){
 		node->thread._self_id = 0;
 		head = node;
-		tail = node;
+		head->prev = head;
+		head->next = head;
 	}else{
-		node->thread._self_id = tail->thread._self_id + 1;
-		tail->next = node;
-		node->prev = tail;
-		tail = node;
+		node->thread._self_id = head->prev->thread._self_id + 1;
+		node->prev = head->prev;
+		node->next = head;
+		head->prev->next = node;
+		head->prev = node;
 	}
 }
 
@@ -33,8 +35,8 @@ void removeNode(Node* node){
 
 static inline my_pthread_t*
 findThread_id(pid_t thread_id){
-	curr = head;
-	while(curr != NULL){
+		curr = head;
+	while(curr != NULL){ //TODO:stuck into while loop with double linked list
 		if(curr->thread._self_id == thread_id){
 			return &curr->thread;
 		}
@@ -74,8 +76,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	assert(getcontext(&thread->_ucontext_t) != -1);
 	thread->func = function;
 	thread->arg = arg;
-	//thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
-	thread->_ucontext_t.uc_stack.ss_sp = malloc(MIN_STACK);
+	thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
 	thread->_ucontext_t.uc_stack.ss_size = MIN_STACK;
 	thread->_ucontext_t.uc_stack.ss_flags = 0;
 	thread->_ucontext_t.uc_flags = 0;
@@ -108,11 +109,12 @@ void
 schedule(){
 
 	if(total_thread > 1){
-		printf("**************multiple thread************\n");
+		
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
-		assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t)==0);
+		printf("switch from thread %d to thread %d\n", prevThread->_self_id, currThread->_self_id);
+		assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
 	}
 	
 }
@@ -163,13 +165,24 @@ void* test2(){
 	return NULL;
 }
 
+void* test3(){
+	while(1){
+		printf("33333\n");
+	}
+	return NULL;
+}
+
 int main(){
-	start();
+	
 	my_pthread_t thread;
 	my_pthread_t thread2;
+	my_pthread_t thread3;
+
 	my_pthread_create(&thread,NULL,&test,NULL);
 	my_pthread_create(&thread2,NULL,&test2,NULL);
+	my_pthread_create(&thread3,NULL,&test3,NULL);
 
+	start();
 	while(1){
 		//printf("main");
 	}
