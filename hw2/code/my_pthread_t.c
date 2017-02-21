@@ -103,7 +103,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 }
 
 void
-my_pthread_yied(){
+my_pthread_yield(){
 
 	if(scheduler.runningThread != -1){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
@@ -151,15 +151,57 @@ schedule(){
 	}
 }
 
+void 
+hdl (int sig, siginfo_t *siginfo, void *context){
+	static int count = 0;
+	printf ("No.%d: Sending PID: %ld, UID: %ld\n", count++,
+			(long)siginfo->si_pid, (long)siginfo->si_uid);
+	if(head == NULL){
+		my_pthread_t mainThread;
+		my_pthread_create(&mainThread,NULL,&schedule,NULL);
+		assert(getcontext(&mainThread._ucontext_t) != -1);
+		my_pthread_mutex_init(&countLock, NULL);
+	}
+
+	if(total_thread > 1){
+		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
+		my_pthread_t* currThread = findThread_robin();
+		scheduler.runningThread = currThread->_self_id;
+		prevThread->state = READY;
+		currThread->state = RUNNING;
+		printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
+
+		if(prevThread->_self_id == 0){
+			setcontext(&currThread->_ucontext_t);
+		}else{
+			//assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
+			prevThread->_ucontext_t = *((ucontext_t *) context);
+			setcontext(&currThread->_ucontext_t);
+
+		}
+	}
+}
+
 void
 start(){
-	signal(SIGALRM,schedule);
+	
+	
+	
+	struct sigaction act;
+	memset (&act, 0, sizeof(act));
+	act.sa_sigaction = &hdl;
+	act.sa_flags = SA_SIGINFO;
+	sigaction(SIGVTALRM,&act,NULL);
+	
+
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
-	tick.it_value.tv_usec = 1;
+	tick.it_value.tv_usec = TIME_QUANTUM;
 	tick.it_interval.tv_sec = 0;
 	tick.it_interval.tv_usec = TIME_QUANTUM;
-	assert(setitimer(ITIMER_REAL,&tick,NULL)!=1);
+	assert(setitimer(ITIMER_VIRTUAL,&tick,NULL)!=1);
+
+	
 }
 
 int
@@ -171,7 +213,7 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 	while(__sync_lock_test_and_set(&mutex->flag,1))
-		my_pthread_yied();
+		my_pthread_yield();
 	return 0;
 }
 
@@ -188,6 +230,10 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	printf("thread %d is running\n", scheduler.runningThread);
+	int a = 0;
+	while(1){
+		//printf("11111\n");
+	}
 	/*
 	int i;
 	for(i = 0; i < 1000; i++){
