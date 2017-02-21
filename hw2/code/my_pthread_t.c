@@ -14,14 +14,14 @@ Node* createNode(my_pthread_t thread){
 void insertNode(Node* node){
 	total_thread++;
 	if(head == NULL){
+		node->thread._self_id = 1;
 		head = node;
 		tail = node;
-		node->thread._self_id = 1;
 	}else{
+		node->thread._self_id = tail->thread._self_id + 1;
 		tail->next = node;
 		node->prev = tail;
 		tail = node;
-		node->thread._self_id = tail->thread._self_id + 1;
 	}
 }
 
@@ -40,6 +40,15 @@ findThread_id(pid_t thread_id){
 		curr = curr->next;
 	}
 	return NULL;
+}
+
+my_pthread_t*
+findThread_robin(){
+	if(scheduler.runningThread == total_thread){
+		return findThread_id(1);
+	}else{
+		return findThread_id(scheduler.runningThread++);
+	}
 }
 
 static inline my_pthread_t*
@@ -95,16 +104,15 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 
 void
 schedule(){
-	printf("wuyangzhang\n\n\n\n\n");
 
 	if(total_thread > 1){
+		printf("multiple thread\n\n\n\n\n");
 		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
-		my_pthread_t* currThread = findThread_priority();
+		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
 		swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t);
-	}else if(total_thread == 1){
-		scheduler.runningThread = head->thread._self_id;
 	}
+	
 }
 
 void
@@ -141,14 +149,14 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	while(1){
-		printf("%s\n","create thread1");
+		printf("create thread1");
 	}
 	return NULL;
 }
 
 void* test2(){
 	while(1){
-		printf("%s\n","create thread2");
+		printf("create thread2");
 	}
 	return NULL;
 }
@@ -161,7 +169,7 @@ int main(){
 	my_pthread_create(&thread2,NULL,&test2,NULL);
 
 	while(1){
-		printf("main");
+		//printf("main");
 	}
 
 	return 0;
