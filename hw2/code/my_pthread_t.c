@@ -211,7 +211,6 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 	return 0;
 }
 
-
 void* test(){
 	printf("[TEST] thread %d is running\n", scheduler.runningThread);
 	int a = scheduler.runningThread*1000000;
@@ -222,7 +221,7 @@ void* test(){
 	}
 	return NULL;
 }
-
+s
 static int sb = 0;
 
 void* test2(){
