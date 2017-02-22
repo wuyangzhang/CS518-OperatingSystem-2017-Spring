@@ -212,8 +212,8 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 void
 start(){
 	//init scheduler context;
-	assert(getcontext(&scheduler.schedule_thread._ucontext_t) == 0)
-	scheduler.schedule_thread._ucontext_t.uc_stack.ss_sp = schedule.stack;
+	assert(getcontext(&scheduler.schedule_thread._ucontext_t) == 0);
+	scheduler.schedule_thread._ucontext_t.uc_stack.ss_sp = scheduler.stack;
 	scheduler.schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
 	scheduler.schedule_thread._ucontext_t.uc_flags = 0;
 	scheduler.schedule_thread._ucontext_t.uc_link = NULL;
