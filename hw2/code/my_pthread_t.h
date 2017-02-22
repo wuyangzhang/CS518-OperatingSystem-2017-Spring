@@ -15,8 +15,6 @@
 #define MIN_STACK 32768
 #define TIME_QUANTUM 50000
 
-int total_thread = 0;
-
 typedef int pid_t;
 
 enum THREAD_STATE{
@@ -51,16 +49,15 @@ typedef struct _Node
   struct _Node* prev;
 }Node;
 
-Node* head;
-Node* curr;
 
 typedef struct _schedule_t{
-    //ucontext_t main;
+    my_pthread_t schedule_thread;
     pid_t runningThread;
-    //Node* head;
+    int total_thread;
+    char stack[MIN_STACK];
+    
 }schedule_t;
 
-schedule_t scheduler;
 
 int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void*(*function)(void*), void* arg);
 
