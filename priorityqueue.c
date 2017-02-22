@@ -52,7 +52,7 @@ static inline void queue_init(){
 } 
 
 static inline void queue_push(my_pthread_t *curr){
-	contexts_t *new;
+	contexts_t *new = (contexts_t*) malloc(sizeof(contexts_t));
 	new->thread = *curr;
 //	link_add_by_priority(priorityQ[curr->thread.priority].next, &(curr->link));
 	link_add_by_priority(priorityQ[new->thread.priority].next, &(new->link));
@@ -92,14 +92,14 @@ int main(int argc, char const *argv[])
 //	}
 
 	queue_init();	
-	contexts_t c1, c2, c3, *elem_iter;
+	my_pthread_t c1, c2, c3;
 	/* high priority -> low priority: 0 -> 3*/
-	c1.thread.priority = 1;
-	c1.thread._self_id = 1;
-	c2.thread.priority = 1;
-	c2.thread._self_id = 2;
-	c3.thread.priority = 2;
-	c3.thread._self_id = 3;
+	c1.priority = 1;
+	c1._self_id = 1;
+	c2.priority = 1;
+	c2._self_id = 2;
+	c3.priority = 2;
+	c3._self_id = 3;
 
 //	link_add_by_priority(priorityQ[c1.thread.priority].next, &(c1.link));
 //	link_add_by_priority(priorityQ[c2.thread.priority].next, &(c2.link));
