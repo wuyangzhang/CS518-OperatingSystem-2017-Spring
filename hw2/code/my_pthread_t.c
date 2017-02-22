@@ -61,7 +61,7 @@ findThread_id(pid_t thread_id){
 my_pthread_t*
 findThread_robin(){
 	if(scheduler.runningThread == total_thread-1){
-		return &head->thread;
+		return &head->next->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
 	}
@@ -105,11 +105,10 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 
 void
 my_pthread_yield(){
-
+	printf("thread yield!\n");
 	if(scheduler.runningThread != -1){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
 		thread->state = READY;
-		scheduler.runningThread = 0;
 		swapcontext(&thread->_ucontext_t, &schedule_thread._ucontext_t);
 	}
 }
@@ -133,7 +132,6 @@ schedule(){
 		scheduler.runningThread = currThread->_self_id;
 		currThread->state = RUNNING;
 		printf("switch to thread %d \n", currThread->_self_id);
-		//swapcontext(&scheduler_context, &currThread->_ucontext_t);
 		setcontext(&currThread->_ucontext_t);
 	}
 	
@@ -192,8 +190,9 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
-	while(__sync_lock_test_and_set(&mutex->flag,1))
-		my_pthread_yield();
+	while(__sync_lock_test_and_set(&mutex->flag,1) == 1){
+		//my_pthread_yield();
+	}
 	return 0;
 }
 
@@ -208,6 +207,7 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 	return 0;
 }
 
+
 void* test(){
 	printf("[TEST] thread %d is running\n", scheduler.runningThread);
 	int a = scheduler.runningThread*1000000;
@@ -219,10 +219,22 @@ void* test(){
 	return NULL;
 }
 
+static int sb = 0;
+
 void* test2(){
-	while(1){
-		printf("22222\n");
+	printf("[TEST] thread %d is running\n", scheduler.runningThread);
+	static int enterTime = 0;
+	enterTime++;
+	printf("enter time %d\n", enterTime);
+
+	my_pthread_mutex_lock(&countLock); 
+	while(enterTime < 3){
+		//sb++;
+		//printf("%d\n",sb);
 	}
+	my_pthread_mutex_unlock(&countLock); 
+	printf("thread %d unlock!\n", scheduler.runningThread);
+
 	return NULL;
 }
 
@@ -240,9 +252,9 @@ int main(){
 	my_pthread_t thread2;
 	my_pthread_t thread3;
 
-	my_pthread_create(&thread,NULL,&test,NULL);
-	my_pthread_create(&thread2,NULL,&test,NULL);
-	my_pthread_create(&thread3,NULL,&test,NULL);
+	my_pthread_create(&thread,NULL,&test2,NULL);
+	my_pthread_create(&thread2,NULL,&test2,NULL);
+	my_pthread_create(&thread3,NULL,&test2,NULL);
 
 	while(1){
 		//
