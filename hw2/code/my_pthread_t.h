@@ -13,7 +13,7 @@
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
-#define TIME_QUANTUM 50
+#define TIME_QUANTUM 100
 
 typedef int pid_t;
 

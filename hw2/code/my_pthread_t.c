@@ -16,6 +16,7 @@ Node* createNode(my_pthread_t thread){
 }
 
 void insertNode(Node* node){
+	printf("Thread %d inserted!\n", node->thread._self_id);
 	total_thread++;
 	if(head == NULL){
 		node->thread._self_id = 0;
@@ -59,7 +60,7 @@ findThread_id(pid_t thread_id){
 
 my_pthread_t*
 findThread_robin(){
-	if(scheduler.runningThread == total_thread - 1){
+	if(scheduler.runningThread == total_thread-1){
 		return &head->next->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
@@ -125,7 +126,7 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 	return 0;
 }
 
-void
+/*void
 schedule(){
 	//init main thread
 	if(head == NULL){
@@ -149,14 +150,14 @@ schedule(){
 			assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
 		}
 	}
-}
+}*/
 
 void 
 hdl (int sig, siginfo_t *siginfo, void *context){
 	static int count = 0;
-	printf ("No.%d: Sending PID: %ld, UID: %ld\n", count++,
-			(long)siginfo->si_pid, (long)siginfo->si_uid);
-	if(head == NULL){
+	printf ("**********************\n");//No.%d: Running Thread %ld\n", count++,scheduler.runningThread);
+	if(scheduler.runningThread == 0){
+		printf("Main thread created.\n");
 		my_pthread_t mainThread;
 		my_pthread_create(&mainThread,NULL,&schedule,NULL);
 		assert(getcontext(&mainThread._ucontext_t) != -1);
@@ -230,9 +231,11 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	printf("thread %d is running\n", scheduler.runningThread);
-	int a = 0;
+	int a = scheduler.runningThread*1000000;
 	while(1){
-		//printf("11111\n");
+		if(a%1000000 == 0)
+			printf("%d\n",a/1000000);
+		a++;
 	}
 	/*
 	int i;
