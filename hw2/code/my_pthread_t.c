@@ -181,9 +181,7 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 
 void 
 schedule(){
-	while(1){
-
-	}
+	
 	if(scheduler.total_thread > 1){
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
