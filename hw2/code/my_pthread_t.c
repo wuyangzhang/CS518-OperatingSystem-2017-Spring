@@ -8,8 +8,7 @@
 
 static int counter = 0;
 static my_pthread_mutex_t countLock;
-static ucontext_t scheduler_context;
-
+static my_pthread_t schedule_thread;
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
 	node->thread = thread;
@@ -111,7 +110,7 @@ my_pthread_yield(){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
 		thread->state = READY;
 		scheduler.runningThread = 0;
-		swapcontext(&thread->_ucontext_t, &scheduler_context);
+		swapcontext(&thread->_ucontext_t, &schedule_thread._ucontext_t);
 	}
 }
 
@@ -150,7 +149,7 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 		currThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
 		currThread->state = READY;
 		//go to the context of scheduler
-		setcontext(&scheduler_context);
+		setcontext(&schedule_thread._ucontext_t);
 	}
 	
 }
@@ -159,12 +158,13 @@ void
 start(){
 	//init scheduler context;
 	char schedule_stack[MIN_STACK];
-	if(getcontext(&scheduler_context) == 0){
-		scheduler_context.uc_stack.ss_sp = schedule_stack;
-		scheduler_context.uc_stack.ss_size = sizeof(MIN_STACK);
-		scheduler_context.uc_flags = 0;
-		scheduler_context.uc_link = NULL;
-		makecontext(&scheduler_context, schedule, 0);
+	if(getcontext(&schedule_thread._ucontext_t) == 0){
+		schedule_thread._ucontext_t.uc_stack.ss_sp = schedule_stack;
+		schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
+		schedule_thread._ucontext_t.uc_flags = 0;
+		schedule_thread._ucontext_t.uc_link = NULL;
+		makecontext(&schedule_thread._ucontext_t, schedule, 0);
+		insertNode(createNode(schedule_thread));
 	}
 
 	my_pthread_mutex_init(&countLock, NULL);
