@@ -7,13 +7,15 @@
 #include <sys/time.h>
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
+#include <limits.h>
 
 #ifndef _MY_PTHREAD_T_H_
 #define _MY_PTHREAD_T_H_
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
-#define TIME_QUANTUM 100
+#define TIME_QUANTUM 50000
 
 typedef int pid_t;
 

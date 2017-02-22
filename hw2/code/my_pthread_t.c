@@ -8,6 +8,7 @@
 
 static int counter = 0;
 static my_pthread_mutex_t countLock;
+static int SYS_MODE = 0;
 
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
@@ -126,7 +127,7 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 	return 0;
 }
 
-/*void
+void
 schedule(){
 	//init main thread
 	if(head == NULL){
@@ -150,43 +151,40 @@ schedule(){
 			assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
 		}
 	}
-}*/
+}
 
 void 
 hdl (int sig, siginfo_t *siginfo, void *context){
 	static int count = 0;
-	printf ("**********************\n");//No.%d: Running Thread %ld\n", count++,scheduler.runningThread);
-	if(scheduler.runningThread == 0){
-		printf("Main thread created.\n");
-		my_pthread_t mainThread;
-		my_pthread_create(&mainThread,NULL,&schedule,NULL);
-		assert(getcontext(&mainThread._ucontext_t) != -1);
-		my_pthread_mutex_init(&countLock, NULL);
-	}
-
-	if(total_thread > 1){
-		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
-		my_pthread_t* currThread = findThread_robin();
-		scheduler.runningThread = currThread->_self_id;
-		prevThread->state = READY;
-		currThread->state = RUNNING;
-		printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
-
-		if(prevThread->_self_id == 0){
-			setcontext(&currThread->_ucontext_t);
-		}else{
-			//assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
-			prevThread->_ucontext_t = *((ucontext_t *) context);
-			setcontext(&currThread->_ucontext_t);
-
+	printf ("**********************\n");
+		//No.%d: Running Thread %ld\n", count++,scheduler.runningThread);
+	//printf("receive the data from siqueue by info->si_int is %d\n",siginfo->si_int);
+    //printf("receive the data from siqueue by info->si_value.sival_int is %d\n",siginfo->si_value.sival_int);
+	//if(siginfo->si_int==0){
+		if(scheduler.runningThread == 0){
+			my_pthread_t* mainThread = findThread_id(scheduler.runningThread);
+			assert(getcontext(&mainThread->_ucontext_t) != -1);
 		}
-	}
+
+		if(total_thread > 1){
+			my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
+			my_pthread_t* currThread = findThread_robin();
+			scheduler.runningThread = currThread->_self_id;
+			prevThread->state = READY;
+			currThread->state = RUNNING;
+			printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
+			prevThread->_ucontext_t.uc_mcontext = (*((ucontext_t *) context)).uc_mcontext;
+			setcontext(&currThread->_ucontext_t);
+
+			
+		}
+	//}	
 }
+
+
 
 void
 start(){
-	
-	
 	
 	struct sigaction act;
 	memset (&act, 0, sizeof(act));
@@ -231,11 +229,14 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 
 void* test(){
 	printf("thread %d is running\n", scheduler.runningThread);
-	int a = scheduler.runningThread*1000000;
+	int a = scheduler.runningThread*10000000;
 	while(1){
 		if(a%1000000 == 0)
 			printf("%d\n",a/1000000);
-		a++;
+		if(a==INT_MAX)
+			a = 0;
+		else
+			a++;
 	}
 	/*
 	int i;
@@ -265,13 +266,17 @@ void* test3(){
 int main(){
 	start();
 
+	my_pthread_t mainThread;
 	my_pthread_t thread;
 	my_pthread_t thread2;
 	my_pthread_t thread3;
+	my_pthread_t thread4;
 
+	my_pthread_create(&mainThread,NULL,NULL,NULL);
 	my_pthread_create(&thread,NULL,&test,NULL);
 	my_pthread_create(&thread2,NULL,&test,NULL);
-	my_pthread_create(&thread3,NULL,&test,NULL);
+	//my_pthread_create(&thread3,NULL,&test,NULL);
+	//my_pthread_create(&thread4,NULL,&test,NULL);
 
 	while(1){
 		//
