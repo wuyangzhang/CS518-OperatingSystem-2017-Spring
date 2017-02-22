@@ -13,7 +13,9 @@
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
-#define TIME_QUANTUM 50
+#define TIME_QUANTUM 50000
+
+int total_thread = 0;
 
 typedef int pid_t;
 
@@ -24,8 +26,6 @@ enum THREAD_STATE{
   WAITING,
   TERMINATED
 };
-
-int total_thread = 0;
 
 typedef struct _my_pthread_t{
     pid_t _self_id;
@@ -52,7 +52,6 @@ typedef struct _Node
 }Node;
 
 Node* head;
-//Node* tail;
 Node* curr;
 
 typedef struct _schedule_t{

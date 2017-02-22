@@ -3,11 +3,12 @@
 */
 
 #include <assert.h>
-
+#include <string.h>
 #include "my_pthread_t.h"
 
 static int counter = 0;
 static my_pthread_mutex_t countLock;
+static ucontext_t scheduler_context;
 
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
@@ -29,6 +30,7 @@ void insertNode(Node* node){
 		head->prev->next = node;
 		head->prev = node;
 	}
+	printf("Thread %d inserted!\n", node->thread._self_id);
 }
 
 void removeNode(pid_t thread_id){
@@ -59,8 +61,8 @@ findThread_id(pid_t thread_id){
 
 my_pthread_t*
 findThread_robin(){
-	if(scheduler.runningThread == total_thread - 1){
-		return &head->next->thread;
+	if(scheduler.runningThread == total_thread-1){
+		return &head->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
 	}
@@ -89,13 +91,13 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	thread->func = function;
 	thread->arg = arg;
 	thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
-	thread->_ucontext_t.uc_stack.ss_size = MIN_STACK;
+	thread->_ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
 	thread->_ucontext_t.uc_stack.ss_flags = 0;
 	thread->_ucontext_t.uc_flags = 0;
 	thread->_ucontext_t.uc_link = &head->thread._ucontext_t;
 	thread->state = READY;
 
-	makecontext(&(thread->_ucontext_t), function, 0);
+	makecontext(&thread->_ucontext_t, function, 0);
 
 	insertNode(createNode(*thread));
 
@@ -108,9 +110,8 @@ my_pthread_yield(){
 	if(scheduler.runningThread != -1){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
 		thread->state = READY;
-		//switch to main thread
 		scheduler.runningThread = 0;
-		swapcontext(&thread->_ucontext_t, &head->thread._ucontext_t);
+		swapcontext(&thread->_ucontext_t, &scheduler_context);
 	}
 }
 
@@ -125,83 +126,62 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 	return 0;
 }
 
-void
+void 
 schedule(){
-	//init main thread
-	if(head == NULL){
-		my_pthread_t mainThread;
-		my_pthread_create(&mainThread,NULL,&schedule,NULL);
-		assert(getcontext(&mainThread._ucontext_t) != -1);
-		my_pthread_mutex_init(&countLock, NULL);
-	}
 
 	if(total_thread > 1){
-		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
-		prevThread->state = READY;
 		currThread->state = RUNNING;
-		printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
-
-		if(prevThread->_self_id == 0){
-			setcontext(&currThread->_ucontext_t);
-		}else{
-			assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
-		}
+		printf("switch to thread %d \n", currThread->_self_id);
+		//swapcontext(&scheduler_context, &currThread->_ucontext_t);
+		setcontext(&currThread->_ucontext_t);
 	}
+	
 }
 
 void 
-hdl (int sig, siginfo_t *siginfo, void *context){
-	static int count = 0;
-	printf ("No.%d: Sending PID: %ld, UID: %ld\n", count++,
-			(long)siginfo->si_pid, (long)siginfo->si_uid);
-	if(head == NULL){
-		my_pthread_t mainThread;
-		my_pthread_create(&mainThread,NULL,&schedule,NULL);
-		assert(getcontext(&mainThread._ucontext_t) != -1);
-		my_pthread_mutex_init(&countLock, NULL);
+signal_handler(int sig, siginfo_t *siginfo, void* context){
+
+	if(sig == SIGPROF){
+		printf("receive scheduler signal!\n");
+		//store the context of running thread
+		my_pthread_t* currThread = findThread_id(scheduler.runningThread);
+		currThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
+		currThread->state = READY;
+		//go to the context of scheduler
+		setcontext(&scheduler_context);
 	}
-
-	if(total_thread > 1){
-		my_pthread_t* prevThread = findThread_id(scheduler.runningThread);
-		my_pthread_t* currThread = findThread_robin();
-		scheduler.runningThread = currThread->_self_id;
-		prevThread->state = READY;
-		currThread->state = RUNNING;
-		printf("pre%d, curr%d \n", prevThread->_self_id, currThread->_self_id);
-
-		if(prevThread->_self_id == 0){
-			setcontext(&currThread->_ucontext_t);
-		}else{
-			//assert(swapcontext(&prevThread->_ucontext_t, &currThread->_ucontext_t) != -1);
-			prevThread->_ucontext_t = *((ucontext_t *) context);
-			setcontext(&currThread->_ucontext_t);
-
-		}
-	}
+	
 }
 
 void
 start(){
-	
-	
-	
+	//init scheduler context;
+	char schedule_stack[MIN_STACK];
+	if(getcontext(&scheduler_context) == 0){
+		scheduler_context.uc_stack.ss_sp = schedule_stack;
+		scheduler_context.uc_stack.ss_size = sizeof(MIN_STACK);
+		scheduler_context.uc_flags = 0;
+		scheduler_context.uc_link = NULL;
+		makecontext(&scheduler_context, schedule, 0);
+	}
+
+	my_pthread_mutex_init(&countLock, NULL);
+
 	struct sigaction act;
 	memset (&act, 0, sizeof(act));
-	act.sa_sigaction = &hdl;
-	act.sa_flags = SA_SIGINFO;
-	sigaction(SIGVTALRM,&act,NULL);
+	act.sa_sigaction = signal_handler;
+	act.sa_flags = SA_RESTART | SA_SIGINFO;
+	sigemptyset(&act.sa_mask);
+	sigaction(SIGPROF,&act,NULL);
 	
-
 	struct itimerval tick;
 	tick.it_value.tv_sec = 0;
 	tick.it_value.tv_usec = TIME_QUANTUM;
 	tick.it_interval.tv_sec = 0;
 	tick.it_interval.tv_usec = TIME_QUANTUM;
-	assert(setitimer(ITIMER_VIRTUAL,&tick,NULL)!=1);
-
-	
+	assert(setitimer(ITIMER_PROF,&tick,NULL)!=1);
 }
 
 int
@@ -229,19 +209,13 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 }
 
 void* test(){
-	printf("thread %d is running\n", scheduler.runningThread);
-	int a = 0;
+	printf("[TEST] thread %d is running\n", scheduler.runningThread);
+	int a = scheduler.runningThread*1000000;
 	while(1){
-		//printf("11111\n");
+		if(a%1000000 == 0)
+			printf("%d\n",a/1000000);
+		a++;
 	}
-	/*
-	int i;
-	for(i = 0; i < 1000; i++){
-		//my_pthread_mutex_lock(&countLock);
-		//printf("counter %d\n", counter++);
-		//my_pthread_mutex_unlock(&countLock);
-	}
-	*/
 	return NULL;
 }
 
