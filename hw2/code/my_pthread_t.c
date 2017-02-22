@@ -109,11 +109,21 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 
 void
 my_pthread_yield(){
-	printf("thread yield!\n");
+	printf("[PTHREAD] thread %d yield!\n", scheduler.runningThread);
 	if(scheduler.runningThread != -1){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
 		thread->state = READY;
-		swapcontext(&thread->_ucontext_t, &scheduler.schedule_thread._ucontext_t);
+		my_pthread_t temp;
+		memcpy(&temp, thread, sizeof(thread));
+		getcontext(&thread->_ucontext_t);
+		thread->func = temp.func;
+		thread->arg = temp.arg;
+		thread->_ucontext_t.uc_stack.ss_sp = temp._ucontext_t.uc_stack.ss_sp;
+		thread->_ucontext_t.uc_stack.ss_size = temp._ucontext_t.uc_stack.ss_size;
+		thread->_ucontext_t.uc_stack.ss_flags = temp._ucontext_t.uc_flags;
+		thread->_ucontext_t.uc_flags = temp._ucontext_t.uc_flags;
+		thread->_ucontext_t.uc_link = temp._ucontext_t.uc_link;
+		setcontext(&scheduler.schedule_thread._ucontext_t);		
 	}
 }
 
@@ -195,7 +205,8 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 	while(__sync_lock_test_and_set(&mutex->flag,1)){
-		//my_pthread_yield();
+		printf("[PTHREAD] thread %d spins in the lock\n",scheduler.runningThread);
+		my_pthread_yield();
 	}
 	return 0;
 }
@@ -203,6 +214,7 @@ my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 int 
 my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 	__sync_lock_release(&mutex->flag);
+	printf("[PTHREAD] thread %d unlock!\n",scheduler.runningThread);
 	return 0;
 }
 
@@ -236,7 +248,6 @@ void* test2(){
 		//printf("%d\n",sb);
 	}
 	my_pthread_mutex_unlock(&countLock); 
-	printf("thread %d unlock!\n", scheduler.runningThread);
 
 	return NULL;
 }
