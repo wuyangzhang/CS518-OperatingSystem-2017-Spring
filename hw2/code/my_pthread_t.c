@@ -9,6 +9,7 @@
 schedule_t scheduler;
 static int counter = 0;
 static my_pthread_mutex_t countLock;
+static int CONTEXT_INTERRUPTION = 0;
 
 Node* head;
 Node* curr;
@@ -78,7 +79,7 @@ findThread_id(pid_t thread_id){
 /*
 *	Scheduler test approach. loop all thread in queue accordingly
 */
-my_pthread_t*
+static inline my_pthread_t*
 findThread_robin(){
 	if(scheduler.runningThread == scheduler.total_thread-1){
 		return &head->next->thread;
@@ -131,6 +132,8 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 
 /*
 *	Yield thread 
+*	Explicit call to end the pthread that the current context
+*	be swapped out and another be scheduled
 */
 void
 my_pthread_yield(){
@@ -170,12 +173,17 @@ my_pthread_exit(void* value_ptr){
 */
 int
 my_pthread_join(my_pthread_t thread, void**value_ptr){
+
+	if(*value_ptr != NULL)
+		return *((int*) value_ptr);
 	return 0;
 }
 
 void 
 schedule(){
+	while(1){
 
+	}
 	if(scheduler.total_thread > 1){
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
@@ -183,7 +191,6 @@ schedule(){
 		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
 		setcontext(&currThread->_ucontext_t);
 	}
-	
 }
 
 /*
@@ -200,6 +207,16 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 		my_pthread_t* currThread = findThread_id(scheduler.runningThread);
 		currThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
 		currThread->state = READY;
+		/*
+			check CONTEXT_INTERRUPTION.
+			if == true, do not decrease the priority
+			otherwise, change the priority
+		*/
+		if(CONTEXT_INTERRUPTION){
+			CONTEXT_INTERRUPTION = 0;
+		}else{
+			currThread->priority -= 1;
+		}
 		//go to the context of scheduler
 		setcontext(&scheduler.schedule_thread._ucontext_t);
 	}
@@ -209,6 +226,7 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 /*
 *	Initiate scheduler, signal and timer
 */
+
 void
 start(){
 	//init scheduler context;
@@ -217,11 +235,16 @@ start(){
 	scheduler.schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
 	scheduler.schedule_thread._ucontext_t.uc_flags = 0;
 	scheduler.schedule_thread._ucontext_t.uc_link = NULL;
+	//block timer interruption
+	sigset_t sysmodel;sysmodel;
+	sigemptyset(&sysmodel);
+	sigaddset(&sysmodel, SIGPROF);
+	scheduler.schedule_thread._ucontext_t.uc_sigmask = sysmodel;
 	makecontext(&scheduler.schedule_thread._ucontext_t, schedule, 0);
 	insertNode(createNode(scheduler.schedule_thread));
 	
 	/*
-		init signal
+		Init signal
 		once timer signal is trigger, it enters into sigal_handler
 	*/
 	struct sigaction act;
@@ -232,7 +255,7 @@ start(){
 	sigaction(SIGPROF,&act,NULL);
 	
 	/*
-		init timer
+		Init timer
 		it_value.tv_sec: first trigger delay
 		it_interval.tv_sec: trigger interval
 	*/
