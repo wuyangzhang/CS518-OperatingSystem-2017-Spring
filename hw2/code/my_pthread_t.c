@@ -6,9 +6,13 @@
 #include <string.h>
 #include "my_pthread_t.h"
 
+schedule_t scheduler;
 static int counter = 0;
 static my_pthread_mutex_t countLock;
-static my_pthread_t schedule_thread;
+
+Node* head;
+Node* curr;
+
 Node* createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
 	node->thread = thread;
@@ -16,7 +20,7 @@ Node* createNode(my_pthread_t thread){
 }
 
 void insertNode(Node* node){
-	total_thread++;
+	scheduler.total_thread++;
 	if(head == NULL){
 		node->thread._self_id = 0;
 		head = node;
@@ -29,11 +33,11 @@ void insertNode(Node* node){
 		head->prev->next = node;
 		head->prev = node;
 	}
-	printf("Thread %d inserted!\n", node->thread._self_id);
+	//printf("Thread %d inserted!\n", node->thread._self_id);
 }
 
 void removeNode(pid_t thread_id){
-	total_thread--;
+	scheduler.total_thread--;
 	curr = head;
 	while(curr != NULL){
 		if(curr->thread._self_id == thread_id){
@@ -60,7 +64,7 @@ findThread_id(pid_t thread_id){
 
 my_pthread_t*
 findThread_robin(){
-	if(scheduler.runningThread == total_thread-1){
+	if(scheduler.runningThread == scheduler.total_thread-1){
 		return &head->next->thread;
 	}else{
 		return findThread_id(++scheduler.runningThread);
@@ -85,7 +89,7 @@ findThread_priority(){
 int 
 my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, 
 					void*(*function)(void*),void* arg){
-	assert(total_thread != MAX_THREADS);
+	assert(scheduler.total_thread != MAX_THREADS);
 	assert(getcontext(&thread->_ucontext_t) != -1);
 	thread->func = function;
 	thread->arg = arg;
@@ -109,7 +113,7 @@ my_pthread_yield(){
 	if(scheduler.runningThread != -1){
 		my_pthread_t* thread = findThread_id(scheduler.runningThread);
 		thread->state = READY;
-		swapcontext(&thread->_ucontext_t, &schedule_thread._ucontext_t);
+		swapcontext(&thread->_ucontext_t, &scheduler.schedule_thread._ucontext_t);
 	}
 }
 
@@ -127,11 +131,11 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 void 
 schedule(){
 
-	if(total_thread > 1){
+	if(scheduler.total_thread > 1){
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
 		currThread->state = RUNNING;
-		printf("switch to thread %d \n", currThread->_self_id);
+		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
 		setcontext(&currThread->_ucontext_t);
 	}
 	
@@ -141,13 +145,13 @@ void
 signal_handler(int sig, siginfo_t *siginfo, void* context){
 
 	if(sig == SIGPROF){
-		printf("receive scheduler signal!\n");
+		printf("[SignalHandler] receive scheduler signal!\n");
 		//store the context of running thread
 		my_pthread_t* currThread = findThread_id(scheduler.runningThread);
 		currThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
 		currThread->state = READY;
 		//go to the context of scheduler
-		setcontext(&schedule_thread._ucontext_t);
+		setcontext(&scheduler.schedule_thread._ucontext_t);
 	}
 	
 }
@@ -156,13 +160,13 @@ void
 start(){
 	//init scheduler context;
 	char schedule_stack[MIN_STACK];
-	if(getcontext(&schedule_thread._ucontext_t) == 0){
-		schedule_thread._ucontext_t.uc_stack.ss_sp = schedule_stack;
-		schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
-		schedule_thread._ucontext_t.uc_flags = 0;
-		schedule_thread._ucontext_t.uc_link = NULL;
-		makecontext(&schedule_thread._ucontext_t, schedule, 0);
-		insertNode(createNode(schedule_thread));
+	if(getcontext(&scheduler.schedule_thread._ucontext_t) == 0){
+		scheduler.schedule_thread._ucontext_t.uc_stack.ss_sp = schedule_stack;
+		scheduler.schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
+		scheduler.schedule_thread._ucontext_t.uc_flags = 0;
+		scheduler.schedule_thread._ucontext_t.uc_link = NULL;
+		makecontext(&scheduler.schedule_thread._ucontext_t, schedule, 0);
+		insertNode(createNode(scheduler.schedule_thread));
 	}
 
 	my_pthread_mutex_init(&countLock, NULL);
@@ -190,7 +194,7 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
-	while(__sync_lock_test_and_set(&mutex->flag,1) == 1){
+	while(__sync_lock_test_and_set(&mutex->flag,1)){
 		//my_pthread_yield();
 	}
 	return 0;
