@@ -16,7 +16,8 @@ Node* curr;
 /*
 *	Create a node for a thread
 */
-Node* createNode(my_pthread_t thread){
+Node* 
+createNode(my_pthread_t thread){
 	Node* node = (Node*) malloc(sizeof(Node));
 	node->thread = thread;
 	return node;
@@ -25,7 +26,8 @@ Node* createNode(my_pthread_t thread){
 /*
 *	Insert a thread into list
 */
-void insertNode(Node* node){
+void 
+insertNode(Node* node){
 	scheduler.total_thread++;
 	if(head == NULL){
 		node->thread._self_id = 0;
@@ -44,7 +46,8 @@ void insertNode(Node* node){
 /*
 *	Remove a thread from the list based on its thread id
 */
-void removeNode(pid_t thread_id){
+void
+removeNode(pid_t thread_id){
 	scheduler.total_thread--;
 	curr = head;
 	while(curr != NULL){
@@ -286,7 +289,8 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 /*
 *	Test function 1: loops permanently	
 */
-void* test(){
+void*
+test(){
 	printf("[TEST] thread %d is running\n", scheduler.runningThread);
 	int a = scheduler.runningThread*1000000;
 	while(1){
@@ -302,7 +306,8 @@ void* test(){
 *	Test function 2: test lock
 */
 static int sb = 0;
-void* test2(){
+void*
+test2(){
 	printf("[TEST] thread %d is running\n", scheduler.runningThread);
 	static int enterTime = 0;
 	enterTime++;
@@ -318,14 +323,16 @@ void* test2(){
 	return NULL;
 }
 
-void* test3(){
+void*
+test3(){
 	while(1){
 		printf("33333\n");
 	}
 	return NULL;
 }
 
-int main(){
+int
+main(){
 	start();
 
 	my_pthread_t thread;
