@@ -221,7 +221,7 @@ void* test(){
 	}
 	return NULL;
 }
-s
+
 static int sb = 0;
 
 void* test2(){
