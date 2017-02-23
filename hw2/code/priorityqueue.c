@@ -83,9 +83,10 @@ static inline void queue_look_for_each(link_t *priori){
 }
 
 static inline my_pthread_t* queue_pop(int priority, link_t *priori) {
-//	if(link_is_equal(&priorityQ[priority], &(priorityQ[priority].next) == 1)){
-//		return NULL;
-//	}
+	if(link_is_equal(priori + priority, (priori + priority)->next) == 1){
+		printf("I do not have any element in my link table, why you call me!!!\n");
+		return NULL;
+	}
 //	link_t *elem = link_remove(priorityQ[priority].next);	
 	contexts_t *context = queue_entry((priori + priority)->next, contexts_t, link);
 	printf("got thread id %d from priority level %d", context->thread._self_id, context->thread.priority);
@@ -113,14 +114,11 @@ static inline my_pthread_t* queue_pop(int priority, link_t *priori) {
 void testing()
 {
 	int i, j;
-//	for (j = 0; j < numqueuelevel; ++j)
-//	{
-		/* initialization */
-//		link_init(&priorityQ[j]);
-//	}
-
+	
+	//initialize
 	queue_init(priorityQ);
 	my_pthread_t c1, c2, c3;
+
 	/* high priority -> low priority: 0 -> 3*/
 	c1.priority = 1;
 	c1._self_id = 1;
@@ -144,7 +142,7 @@ void testing()
 	queue_look_for_each(priorityQ);
 
 //	queue_pop_by_id(1);
-	queue_pop(1, priorityQ);
+	queue_pop(0, priorityQ);
 
 //	link_t *l =  link_remove(priorityQ[1].next);	
 	queue_look_for_each(priorityQ);
