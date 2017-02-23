@@ -25,7 +25,7 @@ queue_init(Queue* queue){
 void
 multiQueue_init(Queue* queue[QUEUELEVEL]){
 	int i;
-	for(int i = 0; i < QUEUELEVEL; i++){
+	for(i = 0; i < QUEUELEVEL; i++){
 		queue_init(queue[i]);
 	}
 }
@@ -57,7 +57,7 @@ multiQueue_empty(Queue* queue[QUEUELEVEL]){
 }
 
 void
-queue_push(Queue* queue[QUEUELEVEL], my_pthread_t* thread) {
+multiQueue_push(Queue* queue[QUEUELEVEL], my_pthread_t* thread) {
 	Node* node = (Node*)malloc(sizeof(Node));
 	node->thread = thread;
 	node->next = NULL;
@@ -66,6 +66,19 @@ queue_push(Queue* queue[QUEUELEVEL], my_pthread_t* thread) {
 	queue[thread->priority]->tail = node;
 	
 	queue[thread->priority]->size++;
+	scheduler.total_pendingThread++;
+}
+
+void
+queue_push(Queue* queue, my_pthread_t* thread){
+	Node* node = (Node*)malloc(sizeof(Node));
+	node->thread = thread;
+	node->next = NULL;
+
+	queue->tail->next = node;
+	queue->tail = node;
+	
+	queue->size++;
 	scheduler.total_pendingThread++;
 }
 
@@ -79,9 +92,9 @@ queue_pop(Queue* queue) {
 		if(queue->tail == node){
 			queue->tail = queue->head;
 		}
+		queue->size--;
 		return node->thread;
 	}
-	
 	return NULL;
 }
 
@@ -179,7 +192,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 
 	thread->_self_id = scheduler.total_thread++;
 	thread->priority = QUEUELEVEL - 1;
-	queue_push(pendingThreadQueue,thread);
+	multiQueue_push(pendingThreadQueue,thread);
 	printf("[PTHREAD] thread %d has been created!\n", thread->_self_id);
 	return thread->_self_id;
 }
@@ -245,7 +258,7 @@ schedule(){
 		*/
 		switch(currThread->state){
 			case READY:
-				queue_push(pendingThreadQueue, currThread);	
+				multiQueue_push(pendingThreadQueue, currThread);	
 				break;
 			case TERMINATED:
 				queue_push(finishedThreadQueue, currThread);
@@ -290,11 +303,9 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 				scheduler.runningThread->priority -= 1;
 			}
 		 }
-		
 		//go to the context of scheduler
 		setcontext(&scheduler.schedule_thread._ucontext_t);
 	}
-	
 }
 
 /*
