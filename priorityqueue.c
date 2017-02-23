@@ -10,28 +10,35 @@ typedef struct link{
 	struct link *prev, *next;
 } link_t;
 
-typedef struct contexts{
+typedef struct Node{
 	my_pthread_t thread;
-	link_t link;
-} contexts_t;
+	struct Node *prev, *next;
+} Node_t;
 
-static link_t priorityQ[numqueuelevel];
+static Node_t priorityQ[numqueuelevel];
 
-static inline void link_init(link_t *head) {
+static inline void Node_init(Node_t *head) {
 	head->prev = head->next = head;
 }
 
-static inline void __link_add(link_t *prev, link_t *next, link_t *curr) {
+static inline int Node_is_equal(Node_t *one, Node_t *two){
+	if(one == two){
+		return 1;
+	}
+	return -1;
+}
+
+static inline void __Node_add(Node_t *prev, Node_t *next, Node_t *curr) {
 	prev->next = next->prev = curr;
 	curr->prev = prev;
 	curr->next = next;
 }
 
-static inline void link_add_by_priority(link_t *tail, link_t *curr) {
-	__link_add(tail, tail->next, curr);
+static inline void Node_add_by_priority(Node_t *tail, Node_t *curr) {
+	__Node_add(tail, tail->next, curr);
 }
 
-static inline link_t* link_remove(link_t *get){
+static inline Node_t* Node_remove(Node_t *get){
 	get->prev->next = get->next;
 	get->next->prev = get->prev;
 	get->prev = get->next = get;
@@ -44,55 +51,82 @@ static inline link_t* link_remove(link_t *get){
 #define queue_entry(elem, type, pos) \
 	(type *)(((char *)elem)-((char *)&((type *)0)->pos))
 
-static inline void queue_init(){
+static inline void queue_init(Node_t *priori){
 	int i;
 	for(i = 0; i < numqueuelevel; ++i){
-		link_init(&priorityQ[i]);
+		Node_init(priori + i);
 	}
 } 
 
-static inline void queue_push(my_pthread_t *curr){
-	contexts_t *new = (contexts_t*) malloc(sizeof(contexts_t));
+static inline void queue_push(my_pthread_t *curr, Node_t *priori){
+	Node_t *new = (Node_t*) malloc(sizeof(Node_t));
 	new->thread = *curr;
-//	link_add_by_priority(priorityQ[curr->thread.priority].next, &(curr->link));
-	link_add_by_priority(priorityQ[new->thread.priority].next, &(new->link));
+	Node_add_by_priority((priori + new->thread.priority)->next, new);
 }
 
-static inline void queue_look_for_each(){
+static inline void queue_look_for_each(Node_t *priori){
 	printf("\n************priority queue****************");
 	int i;
-	contexts_t *elem_iter;
+	Node_t *elem_iter;
 	for (i = 0; i < numqueuelevel; ++i)
 	{
 		/* check the insertation */
 		printf("\n---------priority level %d------------\n", i);
-		link_t *iterator;
-		queue_for_each(&priorityQ[i], iterator){
-//			printf("pos: %p\n", iterator);
-			elem_iter = queue_entry(iterator, contexts_t, link);
-			printf(">>>>>>thread id %d", elem_iter->thread._self_id);
+		Node_t *iterator;
+		queue_for_each(priori + i, iterator){
+//			elem_iter = queue_entry(iterator, contexts_t, link);
+			printf(">>>>>>thread id %d", iterator->thread._self_id);
 		}
 	}
 }
 
-static inline my_pthread_t* queue_pop(int priority) {
-	link_t* elem = link_remove(priorityQ[priority].next);	
-	contexts_t *context = queue_entry(elem, contexts_t, link);
-//	printf("got thread id %d from priority level %d", context->thread._self_id, context->thread.priority);
+static inline my_pthread_t* queue_pop(int priority, Node_t *priori) {
+	if(Node_is_equal(priori + priority, (priori + priority)->next) == 1){
+		printf("I do not have any element in my link table, why you call me!!!\n");
+		return NULL;
+	}
+//	link_t *elem = link_remove(priorityQ[priority].next);	
+	Node_t *context = (priori + priority)->next;
+	printf("got thread id %d from priority level %d", context->thread._self_id, context->thread.priority);
 	return &(context->thread);
 }
 
-int main(int argc, char const *argv[])
+static inline int queue_remove(int priority, Node_t *priori){
+	if(Node_is_equal(priori + priority, (priori + priority)->next) == 1){
+                printf("I do not have any element in my link table, why you remove me!!!\n");
+                return -1;
+        }
+	//TODO: return Node
+	Node_t *elem = Node_remove((priori + priority)->next);
+	return 1;
+}
+
+//static inline void queue_pop_by_id(int thread_id){
+//	contexts_t *elem_iter;
+//	int i;
+//	for (i = 0; i < numqueuelevel; ++i)
+//	{
+//		/* look up thread with thread id */
+//		link_t *iterator;
+//		queue_for_each(&priorityQ[i], iterator){
+//			elem_iter = queue_entry(iterator, contexts_t, link);
+//			if(elem_iter->thread._self_id == thread_id){
+//				printf("found it at %d!\n", i);
+//				link_remove(&elem_iter->link);
+//			}
+//			printf("This is prior level %d", i);
+//		}
+//	}
+//}
+
+void testing()
 {
 	int i, j;
-//	for (j = 0; j < numqueuelevel; ++j)
-//	{
-		/* initialization */
-//		link_init(&priorityQ[j]);
-//	}
-
-	queue_init();	
+	
+	//initialize
+	queue_init(priorityQ);
 	my_pthread_t c1, c2, c3;
+
 	/* high priority -> low priority: 0 -> 3*/
 	c1.priority = 1;
 	c1._self_id = 1;
@@ -105,23 +139,27 @@ int main(int argc, char const *argv[])
 //	link_add_by_priority(priorityQ[c2.thread.priority].next, &(c2.link));
 //	link_add_by_priority(priorityQ[c3.thread.priority].next, &(c3.link));
 
-	queue_push(&c1);
-	queue_push(&c2);
-	queue_push(&c3);
+	queue_push(&c1, priorityQ);
+	queue_push(&c2, priorityQ);
+	queue_push(&c3, priorityQ);
 	
 //	printf("thread %d, priority %d\n",c1.thread._self_id, c1.thread.priority);
 //	printf("thread %d, priority %d\n",c2.thread._self_id, c2.thread.priority);
 //	printf("thread %d, priority %d\n",c3.thread._self_id, c3.thread.priority);
 
-	queue_look_for_each();
+	queue_look_for_each(priorityQ);
 
-	my_pthread_t *thread = queue_pop(1);
-	printf("got thread id %d from priority level %d\n", thread->_self_id, thread->priority);
-
-//	link_t *l =  link_remove(priorityQ[1].next);	
-	queue_look_for_each();
-
-	return 0;
+//	queue_pop_by_id(1);
+	queue_pop(0, priorityQ);
+	
+	queue_remove(2, priorityQ);
+	queue_look_for_each(priorityQ);
 }
 
+int main(int argc, char const *argv[])
+{
+	/* code */
+	testing();
+	return 0;
+}
 #endif
