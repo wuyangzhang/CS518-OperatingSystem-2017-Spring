@@ -11,7 +11,7 @@ static int counter = 0;
 static my_pthread_mutex_t countLock;
 static int CONTEXT_INTERRUPTION = 0;
 static Queue* pendingThreadQueue[QUEUELEVEL];
-
+static Queue* finishedThreadQueue;
 
 /*
 *	Create a node for a thread
@@ -81,7 +81,7 @@ queue_pop(Queue* queue) {
 		}
 		return node->thread;
 	}
-	printf("[QUEUE] ERROR: Cannot pop, queue is empty!\n");
+	
 	return NULL;
 }
 
@@ -103,6 +103,26 @@ multiQueue_pop(Queue* queue[QUEUELEVEL]){
 
 	printf("[QUEUE] ERROR: Cannot pop, queue is empty!\n");
 	return NULL;
+}
+
+/*
+*	find a thread is in the queue?
+*	@return 1 find, 0 not find
+*/
+int
+findThread(Queue* queue, my_pthread_t* thread){
+	if(queue_empty(queue)){
+		return 0;
+	}
+	
+	Node* node = queue->head->next;
+	while(node != queue->tail){
+		if(node->thread->_self_id == thread->_self_id){
+			return 1;
+		}
+		node = node->next;
+	}
+	return 0;
 }
 
 void
@@ -217,8 +237,23 @@ void
 schedule(){
 	
 	if(scheduler.total_pendingThread > 0){
-		printf("[Scheduler] start to schedule a new thread \n");
+		printf("[Scheduler] start to schedule! \n");
 		my_pthread_t* currThread = multiQueue_pop(pendingThreadQueue);
+		
+		/*
+			check how to process the popping thread
+		*/
+		switch(currThread->state){
+			case READY:
+				queue_push(pendingThreadQueue, currThread);	
+				break;
+			case TERMINATED:
+				queue_push(finishedThreadQueue, currThread);
+				break;
+			default:
+				break;
+		}
+
 		scheduler.runningThread = currThread;
 		currThread->state = RUNNING;
 		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
