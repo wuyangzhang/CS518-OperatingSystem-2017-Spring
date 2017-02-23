@@ -52,10 +52,12 @@ removeNode(pid_t thread_id){
 	curr = head;
 	while(curr != NULL){
 		if(curr->thread._self_id == thread_id){
-			free(curr->thread._ucontext_t.uc_stack.ss_sp);
+			//free(curr->thread._ucontext_t.uc_stack.ss_sp);
 			curr->prev->next = curr->next;
 			curr->next->prev = curr->prev;
-			free(curr);
+			break;//free(curr);
+		}else{
+			curr = curr->next;
 		}
 	}
 }
@@ -66,11 +68,14 @@ removeNode(pid_t thread_id){
 static inline my_pthread_t*
 findThread_id(pid_t thread_id){
 		curr = head;
-	while(curr != NULL){ //TODO:stuck into while loop with double linked list
+	while(curr != NULL&&curr->next!=head){ //TODO:stuck into while loop with double linked list
 		if(curr->thread._self_id == thread_id){
 			return &curr->thread;
 		}
 		curr = curr->next;
+	}
+	if(curr->thread._self_id == thread_id){
+		return &curr->thread;
 	}
 	return NULL;
 }
@@ -105,6 +110,13 @@ findThread_priority(){
 	return findThread_id(priorityThread);
 }
 
+void 
+my_pthread_startup_function(void*(*function)(void*),void* arg){
+	printf("Enter the pthread startup function\n" );
+	function(arg);
+	my_pthread_exit(NULL);
+}
+
 /*
 *	Create Thread
 */
@@ -122,7 +134,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	thread->_ucontext_t.uc_link = &head->thread._ucontext_t;
 	thread->state = READY;
 
-	makecontext(&thread->_ucontext_t, function, 0);
+	makecontext(&thread->_ucontext_t, my_pthread_startup_function, 2, function, arg);
 
 	insertNode(createNode(*thread));
 
@@ -157,8 +169,14 @@ my_pthread_yield(){
 */
 void
 my_pthread_exit(void* value_ptr){
-	pid_t thread_id = *((pid_t *) value_ptr);
-	removeNode(thread_id);
+	printf("Thread %d exit!\n", scheduler.runningThread);
+	if(value_ptr!=NULL){
+		value_ptr = findThread_id(scheduler.runningThread);
+	}
+	//pid_t thread_id = *((pid_t *) value_ptr);
+	removeNode(scheduler.runningThread);
+	setcontext(&scheduler.schedule_thread._ucontext_t);	
+	printf("You should not see me./n");
 }
 
 /*
@@ -170,6 +188,10 @@ my_pthread_exit(void* value_ptr){
 */
 int
 my_pthread_join(my_pthread_t thread, void**value_ptr){
+	while(findThread_id(thread._self_id)!=NULL){
+		printf("[PTHREAD] thread %d waits for thread %d to finish\n",scheduler.runningThread, thread._self_id);
+		my_pthread_yield();
+	}
 	return 0;
 }
 
@@ -180,7 +202,7 @@ schedule(){
 		my_pthread_t* currThread = findThread_robin();
 		scheduler.runningThread = currThread->_self_id;
 		currThread->state = RUNNING;
-		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
+		printf("****************************\n[Scheduler] switch to thread %d \n", currThread->_self_id);
 		setcontext(&currThread->_ucontext_t);
 	}
 	
@@ -325,9 +347,9 @@ test2(){
 
 void*
 test3(){
-	while(1){
+	//while(1){
 		printf("33333\n");
-	}
+	//}
 	return NULL;
 }
 
