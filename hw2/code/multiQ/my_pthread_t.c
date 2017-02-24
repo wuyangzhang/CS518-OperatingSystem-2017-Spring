@@ -4,6 +4,8 @@
 
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
+
 #include "my_pthread_t.h"
 
 static schedule_t scheduler;
@@ -131,7 +133,7 @@ queue_findThread(Queue* queue, my_pthread_t* thread){
 	}
 	
 	Node* node = queue->head->next;
-	while(node != queue->tail){
+	while(node != queue->tail->next){
 		if(node->thread->_self_id == thread->_self_id){
 			return 1;
 		}
@@ -152,6 +154,28 @@ multiQueue_destory(Queue* queue[QUEUELEVEL]){
 	for(i = 0; i < QUEUELEVEL; i++ ){
 		queue_destory(queue[i]);
 	}
+}
+
+void
+queue_print(Queue* queue){
+	if(queue_empty(queue)){
+		return;
+	}
+	Node* node = queue->head->next;
+	while(node != queue->tail->next){
+		printf("thread id %d: state(%d), priority(%d)\n", node->thread->_self_id, node->thread->state, node->thread->priority);
+		node = node->next;
+	}
+}
+
+void
+multiQueue_print(Queue* queue[QUEUELEVEL]){
+	printf("\t****************print all %d thread in queue!****************\n", scheduler.total_pendingThread);
+	int i;
+	for(i = QUEUELEVEL - 1; i >= 0; i--){
+		queue_print(queue[i]);
+	}
+	printf("\n");
 }
 
 my_pthread_t*
@@ -204,16 +228,17 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 					void*(*function)(void*),void* arg){
 	assert(scheduler.total_thread != MAX_THREADS);
 	assert(getcontext(&thread->_ucontext_t) != -1);
-	thread->func = function;
-	thread->arg = arg;
+	
 	thread->_ucontext_t.uc_stack.ss_sp = thread->stack;
 	thread->_ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
 	thread->_ucontext_t.uc_stack.ss_flags = 0;
 	thread->_ucontext_t.uc_flags = 0;
 	thread->_ucontext_t.uc_link = &scheduler.schedule_thread._ucontext_t;// &head->thread._ucontext_t;
-	thread->state = READY;
 	makecontext(&thread->_ucontext_t,my_pthread_startup_function, 2,  function, arg);
 
+	thread->func = function;
+	thread->arg = arg;
+	thread->state = READY;
 	thread->_self_id = scheduler.total_thread++;
 	thread->priority = QUEUELEVEL - 1;
 	multiQueue_push(pendingThreadQueue,thread);
@@ -229,7 +254,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 void
 my_pthread_yield(){
 	printf("[PTHREAD] thread %d yield!\n", scheduler.runningThread->_self_id);
-	if(scheduler.total_thread > 1){
+	
 		my_pthread_t* thread = scheduler.runningThread;
 		thread->state = WAITING;
 		my_pthread_t temp;
@@ -244,7 +269,7 @@ my_pthread_yield(){
 		thread->_ucontext_t.uc_link = temp._ucontext_t.uc_link;
 	
 		setcontext(&scheduler.schedule_thread._ucontext_t);		
-	}
+	
 }
 
 /*
@@ -262,168 +287,6 @@ my_pthread_join(my_pthread_t thread, void**value_ptr){
 		my_pthread_yield();
 	}
 	return 0;
-}
-
-
-void 
-schedule(){
-	static int round = 0;
-	printf("\n***************schedule round %d***************\n\n", round++);
-	printf("total pending number %d\n",scheduler.total_pendingThread);
-	/*
-		Handle current running thread
-	*/
-	switch(scheduler.runningThread->state){
-		case(READY)://system interruption
-			multiQueue_push(pendingThreadQueue, scheduler.runningThread);		
-			break;
-		case(WAITING)://thread yield
-			multiQueue_push(pendingThreadQueue, scheduler.runningThread);
-			break;
-		case(TERMINATED)://thread terminate
-			queue_push(finishedThreadQueue, scheduler.runningThread);
-			break;
-		default:
-			break;
-	}
-
-	/*
-		Handle the next running thread
-	*/
-	printf("total pending number %d\n",scheduler.total_pendingThread);
-	if(scheduler.total_pendingThread > 0){
-		printf("[Scheduler] start to schedule! \n");
-		my_pthread_t* currThread = multiQueue_pop(pendingThreadQueue);
-		scheduler.runningThread = currThread;
-		printf("\n************************************************\n\n");
-		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
-		currThread->state = RUNNING;
-		setcontext(&currThread->_ucontext_t);
-	}else{
-		printf("[Scheduler] finish all schedule!");
-	}
-}
-
-/*
-*	To handler the signal, switch to schedule function
-*	@para sig: signal value
-*	@para context: old_context
-*/
-void 
-signal_handler(int sig, siginfo_t *siginfo, void* context){
-
-	if(sig == SIGPROF){
-		printf("[SignalHandler] receive scheduler signal!\n");
-		//store the context of running thread
-		
-		 if(scheduler.runningThread->_self_id != -1){
-			
-			scheduler.runningThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
-			
-			if(scheduler.runningThread->state == RUNNING){
-				scheduler.runningThread->state = READY;
-			}
-			/*
-				Check CONTEXT_INTERRUPTION.
-				if == true, do not decrease the priority
-				otherwise, change the priority
-			*/
-			if(CONTEXT_INTERRUPTION){
-				CONTEXT_INTERRUPTION = 0;
-			}else{
-				if(scheduler.runningThread->priority >= 1){
-					scheduler.runningThread->priority -= 1;		
-				}
-			}
-		 }
-		//go to the context of scheduler
-		setcontext(&scheduler.schedule_thread._ucontext_t);
-	}
-}
-
-/*
-*	Initiate scheduler, signal and timer
-*/
-
-void
-start(){
-	/*
-		init scheduler context;
-	*/
-	memset(&scheduler, 0, sizeof(schedule_t));
-	scheduler.runningThread = (my_pthread_t*) malloc(sizeof(my_pthread_t));
-	// scheduler.schedule_thread = (my_pthread_t*) malloc(sizeof(my_pthread_t));
-	assert(getcontext(&scheduler.schedule_thread._ucontext_t) == 0);
-	scheduler.schedule_thread._ucontext_t.uc_stack.ss_sp = scheduler.stack;
-	scheduler.schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
-	scheduler.schedule_thread._ucontext_t.uc_flags = 0;
-	scheduler.schedule_thread._ucontext_t.uc_link = NULL;
-	scheduler.runningThread->_self_id = -1;
-	scheduler.runningThread->state = -1;
-	/*
-		block timer interruption
-	*/
-	sigset_t sysmodel;sysmodel;
-	sigemptyset(&sysmodel);
-	sigaddset(&sysmodel, SIGPROF);
-	scheduler.schedule_thread._ucontext_t.uc_sigmask = sysmodel;
-	makecontext(&scheduler.schedule_thread._ucontext_t, schedule, 0);
-
-	/*
-		init multiple priority queue
-	*/
-	int i;
-	for(i = 0; i < QUEUELEVEL; i++){
-		pendingThreadQueue[i] = (Queue*) malloc(sizeof(Queue));
-	}
-
-	multiQueue_init(pendingThreadQueue);
-
-	/*
-		init finished thread queue
-	*/
-	finishedThreadQueue = (Queue*) malloc(sizeof(Queue));
-	queue_init(finishedThreadQueue);
-	//scheduler.total_thread++;
-	//scheduler.schedule_thread._self_id = scheduler.id++;
-	//scheduler.schedule_thread.priority = ;
-	//insertNode(createNode(scheduler.schedule_thread));
-	//queue_push(pendingThreadQueue[QUEUELEVEL], scheduler.schedule_thread);
-	/*
-		Init signal
-		once timer signal is trigger, it enters into sigal_handler
-	*/
-	struct sigaction act;
-	memset (&act, 0, sizeof(act));
-	act.sa_sigaction = signal_handler;
-	act.sa_flags = SA_RESTART | SA_SIGINFO;
-	sigemptyset(&act.sa_mask);
-	sigaction(SIGPROF,&act,NULL);
-	
-	/*
-		Init timer
-		it_value.tv_sec: first trigger delay
-		it_interval.tv_sec: trigger interval
-	*/
-	struct itimerval tick;
-	tick.it_value.tv_sec = 0;
-	tick.it_value.tv_usec = TIME_QUANTUM;
-	tick.it_interval.tv_sec = 0;
-	tick.it_interval.tv_usec = TIME_QUANTUM;
-	assert(setitimer(ITIMER_PROF,&tick,NULL)!=1);
-
-	//testlock
-	my_pthread_mutex_init(&countLock, NULL);
-}
-
-void
-end(){
-	multiQueue_destory(pendingThreadQueue);
-	int i;
-	for(i = 0; i < QUEUELEVEL; i++){
-		free(pendingThreadQueue[i]);
-	}
-	free(scheduler.runningThread);
 }
 
 /*
@@ -466,6 +329,207 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 	return 0;
 }
 
+void 
+schedule(){
+	static int round = 0;
+	printf("\n****************************schedule round %d**************************\n\n", round++);
+	multiQueue_print(pendingThreadQueue);
+	/*
+		Handle current running thread
+	*/
+	printf("runningThread %d state: %d\n", scheduler.runningThread->_self_id, scheduler.runningThread->state);
+	switch(scheduler.runningThread->state){
+		case(READY)://system interruption
+			multiQueue_push(pendingThreadQueue, scheduler.runningThread);		
+			break;
+		case(RUNNING)://corner case, yield interruption
+			scheduler.runningThread->state = READY;
+			multiQueue_push(pendingThreadQueue, scheduler.runningThread);
+			break; 
+		case(RESUME):
+			scheduler.runningThread->state = RUNNING;
+			setcontext(&scheduler.runningThread->_ucontext_t);
+			break;
+		case(WAITING)://thread yield
+			multiQueue_push(pendingThreadQueue, scheduler.runningThread);
+			break;
+		case(TERMINATED)://thread terminate
+			printf("thread %d termimated!\n", scheduler.runningThread->_self_id);
+			queue_push(finishedThreadQueue, scheduler.runningThread);
+			break;
+		default:
+			break;
+	}
+	/*
+		Handle the next running thread
+	*/
+	if(scheduler.total_pendingThread > 0){
+		printf("[Scheduler] start to schedule! \n");
+		my_pthread_t* currThread = multiQueue_pop(pendingThreadQueue);
+		scheduler.runningThread = currThread;
+		printf("\n************************************************\n\n");
+		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
+		currThread->state = RUNNING;
+		setcontext(&currThread->_ucontext_t);
+	}else{
+		printf("[Scheduler] finish all schedule!");
+	}
+}
+
+void
+priorityCheck(){
+	printf("\n\n\n\n\n\n\n************************");
+}
+
+/*
+*	To handler the signal, switch to schedule function
+*	@para sig: signal value
+*	@para context: old_context
+*/
+void 
+signal_handler(int sig, siginfo_t *siginfo, void* context){
+
+	
+	if(sig == SIGPROF){
+		printf("[SignalHandler] receive scheduler signal!\n");
+	//store the context of running thread
+	
+		 if(scheduler.runningThread->_self_id != -1){
+			
+			scheduler.runningThread->_ucontext_t.uc_mcontext = (*((ucontext_t*) context)).uc_mcontext;
+			
+			if(scheduler.runningThread->state == RUNNING){
+				scheduler.runningThread->state = READY;
+			}
+			/*
+				Check CONTEXT_INTERRUPTION.
+				if == true, do not decrease the priority
+				otherwise, change the priority
+			*/
+			if(CONTEXT_INTERRUPTION){
+				CONTEXT_INTERRUPTION = 0;
+				scheduler.runningThread->state = RESUME;
+			}else{
+				if(scheduler.runningThread->priority >= 1){
+					printf("thread %d 's priority has been degraded from %d to %d", scheduler.runningThread->_self_id, scheduler.runningThread->priority, scheduler.runningThread->priority-1);
+					scheduler.runningThread->priority -= 1;		
+				}
+			}
+		 }
+		//go to the context of scheduler
+		setcontext(&scheduler.schedule_thread._ucontext_t);
+	}
+	
+	
+}
+
+/*
+*	Initiate scheduler, signal and timer
+*/
+void
+scheduler_init(){
+	memset(&scheduler, 0, sizeof(schedule_t));
+	scheduler.runningThread = (my_pthread_t*) malloc(sizeof(my_pthread_t));
+	memset(scheduler.runningThread, 0, sizeof(my_pthread_t));
+	// scheduler.schedule_thread = (my_pthread_t*) malloc(sizeof(my_pthread_t));
+	assert(getcontext(&scheduler.schedule_thread._ucontext_t) == 0);
+	scheduler.schedule_thread._ucontext_t.uc_stack.ss_sp = scheduler.schedulerStack;
+	scheduler.schedule_thread._ucontext_t.uc_stack.ss_size = sizeof(MIN_STACK);
+	scheduler.schedule_thread._ucontext_t.uc_flags = 0;
+	scheduler.schedule_thread._ucontext_t.uc_link = NULL;
+	scheduler.schedule_thread._self_id = -1;
+	scheduler.schedule_thread.state = -1;
+	scheduler.schedule_thread.priority = QUEUELEVEL-1;
+	
+	scheduler.runningThread = &scheduler.schedule_thread;
+	
+
+	/*
+		block timer interruption
+	*/
+	sigset_t sysmodel;
+	sigemptyset(&sysmodel);
+	sigaddset(&sysmodel, SIGPROF);
+	scheduler.schedule_thread._ucontext_t.uc_sigmask = sysmodel;
+	makecontext(&scheduler.schedule_thread._ucontext_t, schedule, 0);
+
+	
+}
+
+void
+threadQueue_init(){
+	int i;
+	for(i = 0; i < QUEUELEVEL; i++){
+		pendingThreadQueue[i] = (Queue*) malloc(sizeof(Queue));
+		memset(pendingThreadQueue[i], 0, sizeof(Queue));
+	}
+
+	multiQueue_init(pendingThreadQueue);
+
+	/*
+		init finished thread queue
+	*/
+	finishedThreadQueue = (Queue*) malloc(sizeof(Queue));
+	memset(finishedThreadQueue, 0, sizeof(Queue));
+	queue_init(finishedThreadQueue);
+}
+
+void
+signal_init(){
+
+	struct sigaction act;
+	memset (&act, 0, sizeof(act));
+	act.sa_sigaction = signal_handler;
+	act.sa_flags = SA_RESTART | SA_SIGINFO;
+	sigemptyset(&act.sa_mask);
+	sigaction(SIGPROF,&act,NULL);
+	
+	/*
+		Init timer
+		it_value.tv_sec: first trigger delay
+		it_interval.tv_sec: trigger interval
+	*/
+	struct itimerval tick;
+	tick.it_value.tv_sec = 0;
+	tick.it_value.tv_usec = TIME_QUANTUM;
+	tick.it_interval.tv_sec = 0;
+	tick.it_interval.tv_usec = TIME_QUANTUM;
+	assert(setitimer(ITIMER_PROF,&tick,NULL)!=1);
+
+}
+
+void
+start(){
+	/*
+		init scheduler context;
+	*/
+	scheduler_init();
+
+	/*
+		init multiple priority queue
+	*/
+	threadQueue_init();
+
+	/*
+		Init signal
+		once timer signal is trigger, it enters into sigal_handler
+	*/
+	signal_init();
+
+	//testlock
+	my_pthread_mutex_init(&countLock, NULL);
+}
+
+void
+end(){
+	multiQueue_destory(pendingThreadQueue);
+	int i;
+	for(i = 0; i < QUEUELEVEL; i++){
+		free(pendingThreadQueue[i]);
+	}
+	free(scheduler.runningThread);
+}
+
 /*
 *	Test function 1: loops permanently	
 */
@@ -475,7 +539,7 @@ test(){
 	int a = scheduler.runningThread->_self_id*1000000;
 	while(1){
 		if(a%1000000 == 0)
-			printf("%d\n",a/1000000);
+			//printf("%d\n",a/1000000);
 		a++;
 	}
 	return NULL;
@@ -513,20 +577,20 @@ test3(){
 
 int
 main(){
+
 	start();
 
-	my_pthread_t thread;
-	my_pthread_t thread2;
-	my_pthread_t thread3;
+	my_pthread_t thread;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));
+	my_pthread_t thread2;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));
+	my_pthread_t thread3;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));;
 
-	my_pthread_create(&thread,NULL,&test,NULL);
+	my_pthread_create(&thread,NULL,&test2,NULL);
 	my_pthread_create(&thread2,NULL,&test2,NULL);
 	my_pthread_create(&thread3,NULL,&test2,NULL);
 
 	while(1){
-		//
-	}
 
+	}
 	end();
 	printf("exit program\n");
 	return 0;

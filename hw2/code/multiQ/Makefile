@@ -1,6 +1,6 @@
 all:
-	gcc test.c -g -o thread
+	gcc my_pthread_t.c -g -o thread
 clean:
-	rm test
+	rm thread
 run:
 	./thread
