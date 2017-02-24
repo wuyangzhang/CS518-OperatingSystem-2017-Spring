@@ -92,9 +92,14 @@ static inline void queue_look_for_each(Node_t *priori){
 }
 
 static inline my_pthread_t* queue_pop(int priority, Node_t *priori) {
-	if(Node_is_equal(priori + priority, (priori + priority)->next) == 1){
-		printf("I do not have any element in my link table, why you call me!!!\n");
+	if(priority >= numqueuelevel){
+		printf("No more thread in the priority queue, everything is finished.");
 		return NULL;
+	}
+	if(Node_is_equal(priori + priority, (priori + priority)->next) == 1){
+		printf("No more thread in the queue level %d, auto look up the lower level queue %d\n", priority, priority + 1);
+		/* automatically look up the next lower priority level queue */
+		return queue_pop(priority + 1, priori);
 	}
 //	link_t *elem = link_remove(priorityQ[priority].next);	
 	Node_t *context = (priori + priority)->next;
@@ -104,7 +109,7 @@ static inline my_pthread_t* queue_pop(int priority, Node_t *priori) {
 
 static inline Node_t* queue_remove(Node_t *priori){
 	if(Node_is_equal(priori, priori->next) == 1){
-		printf("I do not have any element in my link table, why you call me!!!\n");
+		printf("I do not have any element in my link table, why you call queue_remove\n");
 		return NULL;
     }
 	//TODO: return Node
@@ -152,6 +157,34 @@ void queue_to_killed(int priority, Node_t *priori, Node_t *killed){
 	printf("\n************killed queue*************\n");
 	node_look_for_each(killed);	
 }
+
+/*
+ *	Function for next thread choosing algorithm
+ *
+ */
+
+int l[4] = {0,0,0,0};
+my_pthread_t* nextThread(Node_t *priori){
+  int i;
+  for(i = 0; i < numqueuelevel; ++i){
+    /* if level i run twice, reset and go to next(lower) level queue */
+    if(i < 2){
+      my_pthread_t *next_thread = queue_pop(i, priori);
+      if(*next_thread == NULL){
+	printf("Every lower thread is finished...");
+	/* reset the current queue, recall this function to get the thread from upper level queue*/
+	l[i - 1] = 0;
+	return nextThread(priori);
+      }
+      l[i]++;
+      return next_thread;
+    }
+    //    else if(i >= 2){
+    else{
+      l[i] = 0;
+    }
+}
+
 void testing()
 {
 	int i, j;
@@ -163,11 +196,11 @@ void testing()
 	my_pthread_t c1, c2, c3;
 
 	/* high priority -> low priority: 0 -> 3*/
-	c1.priority = 1;
+	c1.priority = 0;
 	c1._self_id = 1;
-	c2.priority = 1;
+	c2.priority = 0;
 	c2._self_id = 2;
-	c3.priority = 1;
+	c3.priority = 0;
 	c3._self_id = 3;
 
 //	link_add_by_priority(priorityQ[c1.thread.priority].next, &(c1.link));
@@ -185,8 +218,8 @@ void testing()
 	queue_look_for_each(priorityQ);
 
 //	queue_pop_by_id(1);
-	queue_pop(1, priorityQ);
-	
+//	queue_pop(1, priorityQ);
+	nextThread(priorityQ);
 //	Node_t *elem = queue_remove(2, priorityQ);
 	
 	/*when exit, add to tail*/
