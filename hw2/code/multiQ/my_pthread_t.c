@@ -15,6 +15,7 @@ static int CONTEXT_INTERRUPTION = 0;
 static Queue* pendingThreadQueue[QUEUELEVEL];
 static Queue* finishedThreadQueue;
 static Queue* scanThreadQueue;
+static my_pthread_t mainThread;
 /*
 *	Create a node for a thread
 */
@@ -257,7 +258,7 @@ void
 my_pthread_yield(){
 	printf("[PTHREAD] thread %d yield!\n", scheduler.runningThread->_self_id);
 		
-		swapcontext(&scheduler.runningThread->_ucontext_t, &scheduler.schedule_thread._ucontext_t);
+	swapcontext(&scheduler.runningThread->_ucontext_t, &scheduler.schedule_thread._ucontext_t);
 
 		/*
 		my_pthread_t* thread = scheduler.runningThread;
@@ -417,6 +418,7 @@ schedule(){
 		setcontext(&currThread->_ucontext_t);
 	}else{
 		printf("[Scheduler] finish all schedule!");
+		//setcontext(&mainThread._ucontext_t);
 	}
 }
 
@@ -464,7 +466,6 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 
 /*
 *	Initiate scheduler, signal and timer
-67108864
 */
 static inline void
 scheduler_init(){
@@ -487,7 +488,6 @@ scheduler_init(){
 	sigset_t sysmodel;
 	sigemptyset(&sysmodel);
 	sigaddset(&sysmodel, SIGPROF);
-	printf("SIGPROF value %x\n", SIGPROF);
 	scheduler.schedule_thread._ucontext_t.uc_sigmask = sysmodel;
 	makecontext(&scheduler.schedule_thread._ucontext_t, schedule, 0);
 	scheduler.runningThread = &scheduler.schedule_thread;
@@ -619,6 +619,7 @@ test3(){
 
 int
 main(){
+	//getcontext(&mainThread._ucontext_t);
 
 	start();
 
@@ -626,12 +627,17 @@ main(){
 	my_pthread_t thread2;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));
 	my_pthread_t thread3;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));;
 
-	my_pthread_create(&thread,NULL,&test,NULL);
-	my_pthread_create(&thread2,NULL,&test,NULL);
-	my_pthread_create(&thread3,NULL,&test,NULL);
+	my_pthread_create(&thread,NULL,&test2,NULL);
+	my_pthread_create(&thread2,NULL,&test2,NULL);
+	my_pthread_create(&thread3,NULL,&test2,NULL);
 
+	/*
+	my_pthread_join(thread, NULL);
+	my_pthread_join(thread2, NULL);
+	my_pthread_join(thread3, NULL);
+	*/
 	while(1){
-
+		
 	}
 	end();
 	printf("exit program\n");
