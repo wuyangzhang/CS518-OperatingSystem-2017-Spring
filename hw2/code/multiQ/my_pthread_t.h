@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <ucontext.h>
 #include <sys/time.h>
+#include <time.h>
 #include <signal.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #ifndef _MY_PTHREAD_T_H_
 #define _MY_PTHREAD_T_H_

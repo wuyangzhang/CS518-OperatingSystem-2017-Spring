@@ -8,6 +8,7 @@
 
 #include "my_pthread_t.h"
 
+int debug = 0;
 static schedule_t scheduler;
 static int counter = 0;
 static my_pthread_mutex_t countLock;
@@ -16,6 +17,8 @@ static Queue* pendingThreadQueue[QUEUELEVEL];
 static Queue* finishedThreadQueue;
 static Queue* scanThreadQueue;
 static my_pthread_t mainThread;
+
+clock_t timeStart, timeEnd;
 /*
 *	Create a node for a thread
 */
@@ -70,8 +73,9 @@ multiQueue_push(Queue* queue[QUEUELEVEL], my_pthread_t* thread) {
 	
 	queue[thread->priority]->size++;
 	scheduler.total_pendingThread++;
-
-	printf("Push thread %d state(%d) priority(%d), pending %d\n", thread->_self_id,thread->state,thread->priority ,scheduler.total_pendingThread);
+	if(debug){
+		printf("Push thread %d state(%d) priority(%d), pending %d\n", thread->_self_id,thread->state,thread->priority ,scheduler.total_pendingThread);
+	}
 }
 
 static inline void
@@ -113,13 +117,16 @@ multiQueue_pop(Queue* queue[QUEUELEVEL]){
 		for(i = QUEUELEVEL - 1; i >= 0; i--){
 			thread = queue_pop(queue[i]);
 			if(thread != NULL){
-				printf("Pop thread %d state(%d) priority(%d), pending %d\n", thread->_self_id,thread->state,thread->priority ,scheduler.total_pendingThread);
+				if(debug){
+					printf("Pop thread %d state(%d) priority(%d), pending %d\n", thread->_self_id,thread->state,thread->priority ,scheduler.total_pendingThread);
+				}
 				return thread;
 			}
 		}
 	}
-
-	printf("[QUEUE] ERROR: Cannot pop, queue is empty!\n");
+	if(debug){
+		printf("[QUEUE] ERROR: Cannot pop, queue is empty!\n");
+	}
 	return NULL;
 }
 
@@ -164,14 +171,16 @@ queue_print(Queue* queue){
 	}
 	Node* node = queue->head->next;
 	while(node != queue->tail->next){
-		printf("thread id %d: state(%d), priority(%d)\n", node->thread->_self_id, node->thread->state, node->thread->priority);
+		if(debug){
+			printf("thread id %d: state(%d), priority(%d)\n", node->thread->_self_id, node->thread->state, node->thread->priority);
+		}
 		node = node->next;
 	}
 }
 
 void
 multiQueue_print(Queue* queue[QUEUELEVEL]){
-	printf("\t****************print all %d thread in queue!****************\n", scheduler.total_pendingThread);
+	//printf("\t****************print all %d thread in queue!****************\n", scheduler.total_pendingThread);
 	int i;
 	for(i = QUEUELEVEL - 1; i >= 0; i--){
 		queue_print(queue[i]);
@@ -185,7 +194,7 @@ queue_head(Queue* queue){
 		return queue->head->next->thread;
 	}
 
-	printf("[QUEUE] ERROR: queue is empty!");
+	//printf("[QUEUE] ERROR: queue is empty!");
 	return NULL;
 }
 
@@ -195,7 +204,7 @@ multiQueue_head(Queue* queue[QUEUELEVEL]){
 		return queue[QUEUELEVEL-1]->head->next->thread;
 	}
 
-	printf("[QUEUE] ERROR: queue is empty!");
+	//printf("[QUEUE] ERROR: queue is empty!");
 	return NULL;
 }
 
@@ -205,7 +214,9 @@ multiQueue_head(Queue* queue[QUEUELEVEL]){
 */
 void
 my_pthread_exit(void* value_ptr){
-	printf("[PTHREAD] Thread %d exit!\n", scheduler.runningThread->_self_id);
+	if(debug){
+		printf("[PTHREAD] Thread %d exit!\n", scheduler.runningThread->_self_id);
+	}
 
 	scheduler.runningThread->state = TERMINATED;
 	setcontext(&scheduler.schedule_thread._ucontext_t);		
@@ -216,7 +227,9 @@ my_pthread_exit(void* value_ptr){
 */
 void
 my_pthread_startup_function(void*(*function(void*)), void* arg){
-	printf("[PTHREAD] thread %d launch  start up function\n", scheduler.runningThread->_self_id);
+	if(debug){
+		printf("[PTHREAD] thread %d launch  start up function\n", scheduler.runningThread->_self_id);
+	}
 	function(arg);
 	my_pthread_exit(NULL);
 }
@@ -244,8 +257,9 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	makecontext(&thread->_ucontext_t,my_pthread_startup_function, 2,  function, arg);
 	multiQueue_push(pendingThreadQueue,thread);
 
-	
-	printf("[PTHREAD] thread %d has been created!\n", thread->_self_id);
+	if(debug){
+		printf("[PTHREAD] thread %d has been created!\n", thread->_self_id);
+	}
 	return thread->_self_id;
 }
 
@@ -310,9 +324,9 @@ my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mute
 */
 int
 my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
-	printf("[PTHREAD] thread %d enter the lock\n",scheduler.runningThread->_self_id);
+	//printf("[PTHREAD] thread %d enter the lock\n",scheduler.runningThread->_self_id);
 	while(__sync_lock_test_and_set(&mutex->flag,1)){
-		printf("[PTHREAD] thread %d spins in the lock\n",scheduler.runningThread->_self_id);
+		//printf("[PTHREAD] thread %d spins in the lock\n",scheduler.runningThread->_self_id);
 		my_pthread_yield();
 	}
 	return 0;
@@ -324,7 +338,7 @@ my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 int 
 my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 	__sync_lock_release(&mutex->flag);
-	printf("[PTHREAD] thread %d unlock!\n",scheduler.runningThread->_self_id);
+	//printf("[PTHREAD] thread %d unlock!\n",scheduler.runningThread->_self_id);
 	return 0;
 }
 
@@ -344,7 +358,7 @@ my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 void
 threadPriority_scan(Queue* queue[QUEUELEVEL], int threshold){
 	int i;
-	printf("\t*************Adjust priority of all %d thread in queue!***********\n", scheduler.total_pendingThread);
+	//printf("\t*************Adjust priority of all %d thread in queue!***********\n", scheduler.total_pendingThread);
 	while(!multiQueue_empty(queue)){
 		my_pthread_t* thread = multiQueue_pop(queue);
 		if(thread->runningCounter < threshold){
@@ -363,18 +377,20 @@ threadPriority_scan(Queue* queue[QUEUELEVEL], int threshold){
 	}
 }
 
-
-
 void 
 schedule(){
 	static int round = 1;
-	printf("\n****************************schedule round %d**************************\n\n", round++);
+	if(debug){
+		printf("\n****************************schedule round %d**************************\n\n", round++);	
+	}
 	multiQueue_print(pendingThreadQueue);
 
 	/*
 		Handle current running thread
 	*/
-	printf("runningThread %d state: %d\n", scheduler.runningThread->_self_id, scheduler.runningThread->state);
+	if(debug){
+		printf("runningThread %d state: %d\n", scheduler.runningThread->_self_id, scheduler.runningThread->state);
+	}
 	switch(scheduler.runningThread->state){
 		case(READY)://system interruption
 			multiQueue_push(pendingThreadQueue, scheduler.runningThread);		
@@ -391,7 +407,7 @@ schedule(){
 			multiQueue_push(pendingThreadQueue, scheduler.runningThread);
 			break;
 		case(TERMINATED)://thread terminate
-			printf("thread %d termimated!\n", scheduler.runningThread->_self_id);
+			//printf("thread %d termimated!\n", scheduler.runningThread->_self_id);
 			queue_push(finishedThreadQueue, scheduler.runningThread);
 			break;
 		default:
@@ -408,18 +424,25 @@ schedule(){
 			threadPriority_scan(pendingThreadQueue,1);
 		}
 
-		printf("[Scheduler] start to schedule! \n");
 		my_pthread_t* currThread = multiQueue_pop(pendingThreadQueue);
 		scheduler.runningThread = currThread;
-		printf("\n************************************************\n\n");
-		printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
+		if(debug){
+			printf("[Scheduler] start to schedule! \n");
+			printf("\n************************************************\n\n");
+			printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
+		}
+		
 		currThread->state = RUNNING;
 		currThread->runningCounter++;
 		setcontext(&currThread->_ucontext_t);
 	}else{
+		timeEnd = clock() - timeStart;
+		int msec = timeEnd * 1000000 / CLOCKS_PER_SEC;
+		
+		printf("[Scheduler] finish all schedule in %d seconds %d ms", msec / 1000, msec % 1000);
+		
+		//setcontext(&mainThread._ucontext_t);
 
-		printf("[Scheduler] finish all schedule!");
-		setcontext(&mainThread._ucontext_t);
 	}
 }
 
@@ -432,7 +455,9 @@ void
 signal_handler(int sig, siginfo_t *siginfo, void* context){
 
 	if(sig == SIGPROF){
-		printf("[SignalHandler] receive scheduler signal!\n");
+		if(debug){
+			printf("[SignalHandler] receive scheduler signal!\n");
+		}
 	//store the context of running thread
 	
 		 if(scheduler.runningThread->_self_id != -1){
@@ -452,7 +477,9 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 				scheduler.runningThread->state = RESUME;
 			}else{
 				if(scheduler.runningThread->priority >= 1){
-					printf("thread %d 's priority has been degraded from %d to %d", scheduler.runningThread->_self_id, scheduler.runningThread->priority, scheduler.runningThread->priority-1);
+					if(debug){
+						printf("thread %d 's priority has been degraded from %d to %d", scheduler.runningThread->_self_id, scheduler.runningThread->priority, scheduler.runningThread->priority-1);
+					}
 					scheduler.runningThread->priority -= 1;		
 				}
 			}
@@ -461,7 +488,6 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 		//go to the context of scheduler
 		setcontext(&scheduler.schedule_thread._ucontext_t);
 	}
-	
 	
 }
 
@@ -570,21 +596,21 @@ end(){
 	free(scheduler.runningThread);
 }
 
-/*
-*	Test function 1: loops permanently	
-*/
-void*
-test(){
-	printf("[TEST] thread %d is running\n", scheduler.runningThread->_self_id);
-	int a = scheduler.runningThread->_self_id*1000000;
-	while(1){
-		if(a%1000000 == 0)
-			//printf("%d\n",a/1000000);
-		a++;
+int sum(int num){
+	if(num != 0){
+		//printf("curr num %d\n", num);
+		return num + sum(num-1);
+	}else{
+		//printf("curr num %d\n", num);
+		return num;
 	}
-	return NULL;
 }
 
+void*
+test1(int num){
+	sum(num);
+	return NULL;
+}
 
 /*
 *	Test function 2: test lock
@@ -607,39 +633,45 @@ test2(){
 	return NULL;
 }
 
-void*
-test3(){
-	while(1){
-		//printf("33333\n");
-	}
-	return NULL;
-}
-
 int
 main(){
 
+	
+	const int threadNum = 1;
+	
+	/*
 	start();
+	timeStart = clock();
 
-	my_pthread_t thread;
-	my_pthread_t thread2;
-	my_pthread_t thread3;
+	my_pthread_t thread[threadNum];
 
-	my_pthread_create(&thread,NULL,&test2,NULL);
-	my_pthread_create(&thread2,NULL,&test2,NULL);
-	my_pthread_create(&thread3,NULL,&test2,NULL);
-
-	getcontext(&mainThread._ucontext_t);
-
-	
-	int i = 0;
-	while( i < 10000){
-		i++;
-		printf("i value %d\n", i);
+	int i;
+	for(i = 0; i < threadNum; i++){
+		my_pthread_create(&thread[i],NULL,&test1,100000);
 	}
+
+	while(1){
+
+	}
+	*/
 	
-	// my_pthread_join(thread, NULL);
-	// my_pthread_join(thread2, NULL);
-	// my_pthread_join(thread3, NULL);
+	
+	timeStart = clock();
+
+	pthread_t t[threadNum];
+	int i;
+	for(i = 0; i < threadNum; i++){
+		pthread_create(&t[i], NULL, test1, 1000000);
+	}
+
+	timeEnd = clock() - timeStart;
+	int msec = timeEnd * 1000000 / CLOCKS_PER_SEC;
+	printf("[Scheduler] finish all schedule in %d ms %d us\n", msec / 1000, msec % 1000);
+	
+
+	for(i = 0; i < threadNum; i++){
+		pthread_join(&t[i], NULL);
+	}
 	
 	//end();
 	printf("exit program\n");
