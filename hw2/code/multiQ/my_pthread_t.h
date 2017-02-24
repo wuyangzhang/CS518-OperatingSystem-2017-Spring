@@ -14,7 +14,7 @@
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
 #define TIME_QUANTUM 50000
-#define QUEUECHECK 5
+#define QUEUECHECK 2
 #define QUEUELEVEL 4
 
 typedef int pid_t;
@@ -36,6 +36,7 @@ typedef struct _my_pthread_t{
     void* arg;
     int state;
     int priority;
+    int runningCounter;
 }my_pthread_t;
 
 typedef struct _my_pthread_mutex_t{
