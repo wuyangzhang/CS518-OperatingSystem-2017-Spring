@@ -256,7 +256,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 */
 void
 my_pthread_yield(){
-	printf("[PTHREAD] thread %d yield!\n", scheduler.runningThread->_self_id);
+	//printf("[PTHREAD] thread %d yield!\n", scheduler.runningThread->_self_id);
 		
 	swapcontext(&scheduler.runningThread->_ucontext_t, &scheduler.schedule_thread._ucontext_t);
 
@@ -290,7 +290,7 @@ int
 my_pthread_join(my_pthread_t thread, void**value_ptr){
 
 	while(!queue_findThread(finishedThreadQueue, &thread)){
-		printf("[PTHREAD] thread %d waits for thread %d to finish\n", scheduler.runningThread->_self_id, thread._self_id);
+		//printf("[PTHREAD] thread %d waits for thread %d to finish\n", scheduler.runningThread->_self_id, thread._self_id);
 		my_pthread_yield();
 	}
 	return 0;
@@ -417,8 +417,9 @@ schedule(){
 		currThread->runningCounter++;
 		setcontext(&currThread->_ucontext_t);
 	}else{
+
 		printf("[Scheduler] finish all schedule!");
-		//setcontext(&mainThread._ucontext_t);
+		setcontext(&mainThread._ucontext_t);
 	}
 }
 
@@ -565,10 +566,7 @@ start(){
 void
 end(){
 	multiQueue_destory(pendingThreadQueue);
-	int i;
-	for(i = 0; i < QUEUELEVEL; i++){
-		free(pendingThreadQueue[i]);
-	}
+	
 	free(scheduler.runningThread);
 }
 
@@ -612,34 +610,38 @@ test2(){
 void*
 test3(){
 	while(1){
-		printf("33333\n");
+		//printf("33333\n");
 	}
 	return NULL;
 }
 
 int
 main(){
-	//getcontext(&mainThread._ucontext_t);
 
 	start();
 
-	my_pthread_t thread;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));
-	my_pthread_t thread2;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));
-	my_pthread_t thread3;// = (my_pthread_t*) malloc(sizeof(my_pthread_t));;
+	my_pthread_t thread;
+	my_pthread_t thread2;
+	my_pthread_t thread3;
 
 	my_pthread_create(&thread,NULL,&test2,NULL);
 	my_pthread_create(&thread2,NULL,&test2,NULL);
 	my_pthread_create(&thread3,NULL,&test2,NULL);
 
-	/*
-	my_pthread_join(thread, NULL);
-	my_pthread_join(thread2, NULL);
-	my_pthread_join(thread3, NULL);
-	*/
-	while(1){
-		
+	getcontext(&mainThread._ucontext_t);
+
+	
+	int i = 0;
+	while( i < 10000){
+		i++;
+		printf("i value %d\n", i);
 	}
-	end();
+	
+	// my_pthread_join(thread, NULL);
+	// my_pthread_join(thread2, NULL);
+	// my_pthread_join(thread3, NULL);
+	
+	//end();
 	printf("exit program\n");
 	return 0;
 }
