@@ -8,7 +8,7 @@
 
 #include "my_pthread_t.h"
 
-int debug = 0;
+int debug = 1;
 static schedule_t scheduler;
 static int counter = 0;
 static my_pthread_mutex_t countLock;
@@ -19,6 +19,13 @@ static Queue* scanThreadQueue;
 static my_pthread_t mainThread;
 
 clock_t timeStart, timeEnd;
+
+#define threadNum 3
+//const int threadNum = 50;
+clock_t starting_time[threadNum];
+int wait_time[threadNum];
+int complete_time[threadNum];
+
 /*
 *	Create a node for a thread
 */
@@ -230,7 +237,23 @@ my_pthread_startup_function(void*(*function(void*)), void* arg){
 	if(debug){
 		printf("[PTHREAD] thread %d launch  start up function\n", scheduler.runningThread->_self_id);
 	}
+
+	pid_t id = scheduler.runningThread->_self_id;
+
+	timeEnd = clock() - timeStart;
+	int msec = timeEnd * 1000000 / CLOCKS_PER_SEC;
+	wait_time[id] = msec;
+		
+	printf("Thread %d waits for %d.%d ms\n", id, msec / 1000, msec % 1000);
+
 	function(arg);
+
+	timeEnd = clock() - timeStart;
+	msec = timeEnd * 1000000 / CLOCKS_PER_SEC;
+	complete_time[id] = msec;
+		
+	printf("Thread %d complete after %d.%d ms\n", id, msec / 1000, msec % 1000);
+
 	my_pthread_exit(NULL);
 }
 
@@ -439,7 +462,20 @@ schedule(){
 		timeEnd = clock() - timeStart;
 		int msec = timeEnd * 1000000 / CLOCKS_PER_SEC;
 		
-		printf("[Scheduler] finish all schedule in %d seconds %d ms", msec / 1000, msec % 1000);
+		printf("[Scheduler] finish all schedule in %d seconds %d ms\n", msec / 1000, msec % 1000);
+
+		int average_waiting = 0;
+		int average_complete = 0;
+		for(int i = 0; i<threadNum; i++){
+			average_waiting += wait_time[i];
+			average_complete += complete_time[i]; 
+		}
+		average_waiting /= threadNum;
+		average_complete /= threadNum;
+
+		printf("Average waiting time is %d\n", average_waiting);
+		printf("Average complete time is %d\n", average_complete);
+		
 		
 		//setcontext(&mainThread._ucontext_t);
 
@@ -619,14 +655,13 @@ static int sb = 0;
 void*
 test2(){
 	printf("[TEST] thread %d is running\n", scheduler.runningThread->_self_id);
-	static int enterTime = 0;
-	enterTime++;
-	printf("enter time %d\n", enterTime);
+	static int counter;
+	//printf("enter time %d\n", enterTime);
 
 	my_pthread_mutex_lock(&countLock); 
-	while(enterTime < 3){
-		sb++;
-		//printf("%d\n",sb);
+	counter = 0;;
+	while(counter++ < 10000000000){
+		printf("%d\n",counter);
 	}
 	my_pthread_mutex_unlock(&countLock); 
 
@@ -637,9 +672,9 @@ int
 main(){
 
 	
-	const int threadNum = 1;
+	//const int threadNum = 50;
 	
-	/*
+	
 	start();
 	timeStart = clock();
 
@@ -647,15 +682,16 @@ main(){
 
 	int i;
 	for(i = 0; i < threadNum; i++){
+		starting_time[i] = clock();
 		my_pthread_create(&thread[i],NULL,&test1,100000);
 	}
 
 	while(1){
 
 	}
-	*/
 	
 	
+	/*
 	timeStart = clock();
 
 	pthread_t t[threadNum];
@@ -672,6 +708,7 @@ main(){
 	for(i = 0; i < threadNum; i++){
 		pthread_join(&t[i], NULL);
 	}
+	*/
 	
 	//end();
 	printf("exit program\n");
