@@ -683,7 +683,7 @@ main(){
 	int i;
 	for(i = 0; i < threadNum; i++){
 		starting_time[i] = clock();
-		my_pthread_create(&thread[i],NULL,&test1,100000);
+		my_pthread_create(&thread[i],NULL,&test2,100000);
 	}
 
 	while(1){
