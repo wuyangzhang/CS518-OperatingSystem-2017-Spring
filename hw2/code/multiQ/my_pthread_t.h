@@ -10,9 +10,11 @@
 #include <signal.h>
 #include <stdio.h>
 #include <pthread.h>
+#include "memlib.h"
 
 #ifndef _MY_PTHREAD_T_H_
 #define _MY_PTHREAD_T_H_
+
 
 #define MAX_THREADS 1024
 #define MIN_STACK 32768
@@ -34,6 +36,7 @@ enum THREAD_STATE{
 typedef struct _my_pthread_t{
     ucontext_t _ucontext_t;
     pid_t _self_id;
+    int pageNum;
     char stack[MIN_STACK];
     void* (*func)(void *arg);
     void* arg;
@@ -88,5 +91,5 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex);
 
 int my_pthread_mutex_destory(my_pthread_mutex_t* mutex);
 
-
+pid_t getRunningThread();
 #endif

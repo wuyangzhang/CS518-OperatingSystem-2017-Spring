@@ -1,0 +1,10 @@
+gcc my_pthread_t.c -g -o thread
+my_pthread_t.c: In function ‘my_pthread_create’:
+my_pthread_t.c:257:35: warning: passing argument 2 of ‘makecontext’ from incompatible pointer type [-Wincompatible-pointer-types]
+  makecontext(&thread->_ucontext_t,my_pthread_startup_function, 2,  function, arg);
+                                   ^
+In file included from my_pthread_t.h:7:0,
+                 from my_pthread_t.c:9:
+/usr/include/ucontext.h:47:13: note: expected ‘void (*)(void)’ but argument is of type ‘void (*)(void ** (*)(void *), void *)’
+ extern void makecontext (ucontext_t *__ucp, void (*__func) (void),
+             ^

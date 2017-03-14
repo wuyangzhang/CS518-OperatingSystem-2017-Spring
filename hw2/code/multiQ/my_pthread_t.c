@@ -219,7 +219,11 @@ my_pthread_exit(void* value_ptr){
 	}
 
 	scheduler.runningThread->state = TERMINATED;
-	setcontext(&scheduler.schedule_thread._ucontext_t);		
+	setcontext(&scheduler.schedule_thread._ucontext_t);
+        
+        /* release memory resource */
+        page_release(scheduler.runningThread->pageNum);
+
 }
 
 /*
@@ -260,6 +264,10 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
 	if(debug){
 		printf("[PTHREAD] thread %d has been created!\n", thread->_self_id);
 	}
+        
+        /* find available memory page*/
+        thread->pageNum = findVoidPage();
+        
 	return thread->_self_id;
 }
 
@@ -348,6 +356,10 @@ my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 int 
 my_pthread_mutex_destory(my_pthread_mutex_t* mutex){
 	return 0;
+}
+
+pid_t getRunningThread(){
+    return scheduler.runningThread->_self_id;
 }
 
 /*
@@ -585,6 +597,10 @@ start(){
 	*/
 	signal_init();
 
+        /*
+         init memory
+         */
+        mem_init();
 	//testlock
 	my_pthread_mutex_init(&countLock, NULL);
 }
@@ -608,7 +624,11 @@ int sum(int num){
 
 void*
 test1(int num){
+    
+        char* p = (char*)myallocate(100, __FILE__, __LINE__, 1);
 	sum(num);
+        mydeallocate(p,  __FILE__, __LINE__, 1);
+
 	return NULL;
 }
 
@@ -637,9 +657,9 @@ int
 main(){
 
 	
-	const int threadNum = 1;
+	const int threadNum = 3;
 	
-	/*
+	
 	start();
 	timeStart = clock();
 
@@ -647,17 +667,17 @@ main(){
 
 	int i;
 	for(i = 0; i < threadNum; i++){
-		my_pthread_create(&thread[i],NULL,&test1,100000);
+		my_pthread_create(&thread[i],NULL,&test1,1000);
 	}
 
 	while(1){
 
 	}
-	*/
+	
 	
 	
 	timeStart = clock();
-
+	/*
 	pthread_t t[threadNum];
 	int i;
 	for(i = 0; i < threadNum; i++){
@@ -675,5 +695,6 @@ main(){
 	
 	//end();
 	printf("exit program\n");
+	*/
 	return 0;
 }
