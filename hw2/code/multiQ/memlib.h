@@ -9,19 +9,23 @@
 
 #include <unistd.h>
 
-//#include "my_pthread_t.h"
+#include "my_pthread_t.h"
 
 /* Emulated Memory */
-#define PAGE_SIZE 	4096
-#define BLOCK_SIZE 	64
-#define MAX_PAGE 	(8*1024*1024/PAGE_SIZE) /* 8 MB */
+
+#define BLOCK_SIZE  64
+#define PAGE_SIZE 4096
+#define MAX_PAGE (8*1024*1024/PAGE_SIZE)
+#define MAX_SWAP_PAGE (16*1024*1024/PAGE_SIZE)
+
+
 /* double word alignment */
-#define ALIGNMENT 8
+#define ALIGNMENT  8
 
 /* place memory manager at the begining of each page */
 typedef struct memoryManager_t{
     char page_available;
-    pid_t threadId;
+    int pageId;
     char* mem_heap; /* point to the first byte of page */
     char* mem_brk; /* points to the last byte of page puls 1*/
     char* mem_max_addr; /* max page addr plus 1 */
@@ -30,14 +34,16 @@ typedef struct memoryManager_t{
 
 static memoryManager* pages[MAX_PAGE];
 
-int mem_init(void);
+/* init memory when a thread has been created */
+
+int mem_init();
+int allocate_frame();
 
 /* interface provided to thread lib*/
 void* myallocate(size_t size, char* fileName, int lineNo, int flag);
 void mydeallocate(void *ptr, char* fileName, int lineNo, int flag);
 
-int page_init_wrap(int pageNum, pid_t thread_id);
 void page_release(int pageNum);
 
-int findVoidPage();
+void vmem_printf(void);
 #endif /* memlib_h */
