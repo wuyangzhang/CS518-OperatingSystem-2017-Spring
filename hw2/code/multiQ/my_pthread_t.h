@@ -1,16 +1,18 @@
-/* 
-  Copyright (C) Wuyang Zhang Feb 17 2017
-	Operating System Project 2 
-*/
-           
+/*
+ Copyright (C) Wuyang Zhang Feb 17 2017
+	Operating System Project 2
+ */
+
+
 #include <stdlib.h>
-#include <ucontext.h>
+#include <sys/ucontext.h>
 #include <sys/time.h>
 #include <time.h>
 #include <signal.h>
 #include <stdio.h>
 #include <pthread.h>
 #include "memlib.h"
+
 
 #ifndef _MY_PTHREAD_T_H_
 #define _MY_PTHREAD_T_H_
@@ -21,22 +23,25 @@
 #define TIME_QUANTUM 50000
 #define QUEUECHECK 2
 #define QUEUELEVEL 4
+#define PAGE_SIZE 4096
+#define MAX_PAGE (8*1024*1024/PAGE_SIZE)
 
 typedef int pid_t;
 
 enum THREAD_STATE{
-  READY = 0,
-  RUNNING,
-  RESUME,
-  BLOCKED,
-  WAITING,
-  TERMINATED
+    READY = 0,
+    RUNNING,
+    RESUME,
+    BLOCKED,
+    WAITING,
+    TERMINATED
 };
 
 typedef struct _my_pthread_t{
     ucontext_t _ucontext_t;
     pid_t _self_id;
-    int pageNum;
+    int usedPage[MAX_PAGE];
+    int currentPage;
     char stack[MIN_STACK];
     void* (*func)(void *arg);
     void* arg;
@@ -50,19 +55,19 @@ typedef struct _my_pthread_mutex_t{
 }my_pthread_mutex_t;
 
 /*
-  schedulercontexts
-  */
+ schedulercontexts
+ */
 typedef struct _Node
 {
-  my_pthread_t* thread;
-  struct _Node* next;
-  //struct _Node* prev;
+    my_pthread_t* thread;
+    struct _Node* next;
+    //struct _Node* prev;
 }Node;
 
 typedef struct{
-  Node* head;
-  Node* tail;
-  int size;
+    Node* head;
+    Node* tail;
+    int size;
 } Queue;
 
 typedef struct _schedule_t{
@@ -91,5 +96,10 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex);
 
 int my_pthread_mutex_destory(my_pthread_mutex_t* mutex);
 
-pid_t getRunningThread();
+int* getUsingFrame(my_pthread_t* pthread);
+void allocateFrame(my_pthread_t* thread);
+
+my_pthread_t* getCurrentRunningThread();
+void updateFrame(my_pthread_t* thread);
+
 #endif
