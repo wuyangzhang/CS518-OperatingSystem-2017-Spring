@@ -10,10 +10,12 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/malloc.h>
 
 #include "memlib.h"
 
-
+/* -------------------------------------------------------------------------- */
+/*              Marco Definitions for physical memory mapping               */
 #define WSIZE       4       /* Word and header/footer size (bytes) */
 #define DSIZE       8       /* Doubleword size (bytes) */
 
@@ -36,19 +38,53 @@
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
-/* Marco definitions that transfer malloc & free functions to self designed functions */
-//#define malloc(x)   myAllocate(x, __FILE__, __LINE__, THREADREQ)
-//#define free(x)     myDeallocate(x, __FILE__, __LINE__, THREADREQ)
 
-void* page_sbrk(memoryManager* page, int incr);
-static void *extend_heap(memoryManager* page, size_t words);
+/* --------------------------------------------------------------------------
+ *                  Phrase 2: Virtual Memory
+ *
+ *                   0                 10 11                 0
+ *  +----------------+-------------------+-------------------+
+ *                      PAGE number            Offset
+ *  +----------------+-------------------+-------------------+
+ *                   virtual address
+ *
+ *                    +----------+
+ *       .--------------->|Page Table|-----------.
+ *      /                 +----------+            |
+ *  0   |  10 11 0                            0   V  10 11 0
+ * +---------+----+                          +---------+----+
+ * |Page Nr  | Ofs|                          |Frame Nr | Ofs|
+ * +---------+----+                          +---------+----+
+ *  Virt Addr   |                             Phys Addr   ^
+ *               \_______________________________________/
+ *
+ * -------------------------------------------------------------------------- */
+
+
+
+/* Marco definitions that transfer malloc & free functions to self designed functions */
+enum MEMORY_LIB_LEVEL{
+    MEMORY_LIB = 0,
+    MEMORY_THREAD
+};
+
+enum MEM{
+    VIRTUAL_MEM = 0,
+    PHYSICAL_MEM
+};
+
+//#define malloc(x)   myallocate(x, __FILE__, __LINE__, THREADREQ)
+//#define free(x)     mydeallocate(x, __FILE__, __LINE__, THREADREQ)
+
+void* page_sbrk(void* page, int incr);
+static void *extend_heap(void* page, size_t words);
 static void place(void *bp, size_t asize);
-static void *find_fit(memoryManager* page, size_t asize);
+static void *find_fit(void* page, size_t asize);
 static void *coalesce(void *bp);
 static void printblock(void *bp);
 
 /*
- * mem_init
+ * - mem_init
  * Initialize the space for all pages that
  * emulate a continuous 8 MB physical memory
  *
@@ -66,18 +102,24 @@ static void printblock(void *bp);
  *          epilogue header
  * ----------------------------------------
  */
+
+/* mem_init 
+ * init frame space
+*/
 int
-mem_init(void){
+mem_init(){
+    char *emulated_memory;
     
-    char *emulated_memory = (char*) malloc(MAX_PAGE*PAGE_SIZE);
+    /* memory align to the size of sysconf(_SC_PAGE_SIZE) */
+    posix_memalign( (void*)(&emulated_memory), sysconf(_SC_PAGE_SIZE), MAX_PAGE*PAGE_SIZE);
     char* next = emulated_memory;
     
+    /* init pages for physical pages */
     int i;
-    /* init pages */
     for(i = 0; i < MAX_PAGE; i++){
         pages[i] = (memoryManager*)malloc(sizeof(memoryManager));
+        pages[i]->pageId = i;
         pages[i]->page_available = '0';
-        pages[i]->threadId = -1;
         pages[i]->mem_heap = next;
         pages[i]->mem_brk = pages[i]->mem_heap;
         pages[i]->mem_max_addr = pages[i]->mem_heap + PAGE_SIZE;
@@ -88,21 +130,28 @@ mem_init(void){
     return 0;
 }
 
-int
-page_init_wrap(int pageNum, pid_t thread_id){
-    pages[pageNum]->threadId = thread_id;
-    pages[pageNum]->page_available = '1';
+/* -thread_mem_init
+ * init memory when a thread has been create
+ */
+int thread_mem_init(int threadId){
+    
+    return 0;
 }
+
+
 
 int
 page_init(memoryManager* page){
     
+    page->page_available = '1';
+    
+    /*cast to physical page or virtual page */
+
     if((page->heap_listp = page_sbrk(page, 4*WSIZE)) == (void*) -1){
         return -1;
     }
 
     PUT(page->heap_listp, 0);
-    
     /* Prologue header */
     PUT(page->heap_listp + (1*WSIZE), PACK(DSIZE, 1));
     /* Prologue footer */
@@ -112,31 +161,42 @@ page_init(memoryManager* page){
     /* update heap_listp, pointing to the first block */
     page->heap_listp += (2*WSIZE);
     
-    /* Extend the empty heap with a free block of BLOCK bytes */
+    /* Extend the empty heap with a free block of BLOCK bytes
     if (extend_heap(page, BLOCK_SIZE/WSIZE) == NULL)
         return -1;
-    
+    */
     return 0;
 }
 
+/*
+ * getNextPage - Get the next page 
+ */
+memoryManager*
+getNextPage(memoryManager* page){
+    if(page->pageId >= MAX_PAGE - 1){
+        return NULL;
+    }else{
+        return pages[page->pageId + 1];
+    }
+}
+
 void*
-page_sbrk(memoryManager* page, int incr){
-    char *old_brk = page->mem_brk;
+page_sbrk(void* page, int incr){
+    char *old_brk = ((memoryManager*)page)->mem_brk;
     
-    if((incr < 0 ) || ((page->mem_brk + incr) > page->mem_max_addr)){
-        printf("@%s, %d Error: Not enough page size to provide!\n", __func__, __LINE__);
+    if((incr < 0 ) || ((((memoryManager*)page)->mem_brk + incr) > ((memoryManager*)page)->mem_max_addr)){
         return (void*) -1;
     }
     
-    page->mem_brk += incr;
+    ((memoryManager*)page)->mem_brk += incr;
     return (void*) old_brk;
 }
 
 /*
- * find an void page
+ * allocate_frame - Find a void frame
  */
 int
-findVoidPage(){
+allocate_frame(){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
         if(pages[i]->page_available == '0'){
@@ -154,7 +214,6 @@ findVoidPage(){
 void *
 page_malloc(memoryManager* page, size_t size){
     size_t asize;      /* Adjusted block size */
-    size_t extendsize; /* Amount to extend heap if no fit */
     char *bp;
     
     if (page->heap_listp == 0){
@@ -179,35 +238,55 @@ page_malloc(memoryManager* page, size_t size){
         return bp;
     }
     
-    /* No fit found. Get more memory and place the block */
-    if ((bp = extend_heap(page, asize/WSIZE)) == NULL)
-        return NULL;
-    place(bp, asize);
-    return bp;
+    /* No fit found. Find more memory from the current page */
+    if ((bp = extend_heap(page, asize/WSIZE)) != NULL){
+         place(bp, asize);
+         return bp;
+    }
+    
+    /* Allcoate a new frame. Check the availability of the upper frame*/
+    if(getNextPage(page)->page_available != '0'){
+        /* evict the upper frame */
+        
+       
+    }
+    
+    /* update thread current page */
+    //updateFrame(getCurrentRunningThread());
+    return page_malloc(getNextPage(page), size);
+   
 }
 
 /*
- *  wrap page allocate function for the thread interface
+ *  myallocate - Wrap page allocate function for the thread interface
  */
 void*
 myallocate(size_t size, char* fileName, int lineNo, int flag){
-    pid_t runningThread = getRunningThread();
-    printf("thread %d requests size of %zu\n", runningThread, size);
-    return page_malloc(pages[runningThread], size);
+    printf("thread %d allocates %zu\n ", getCurrentRunningThread()->_self_id, size);
+    if(flag == MEMORY_LIB){
+        
+    }else if(flag == MEMORY_THREAD){
+        int page = getCurrentRunningThread()->currentPage;
+        return page_malloc(pages[page], size);
+    }else{
+        perror("Error: Unrecognized flag!\n");
+    }
+
+    return NULL;
 }
 
 /*
- * mm_free - Free a block
+ * mm_free 
  */
 void
-page_free(memoryManager* page, void *bp){
+page_free(void* page, void *bp){
     if(bp == 0)
         return;
     
     size_t size = GET_SIZE(HDRP(bp));
     
-    if ( page->heap_listp == 0){
-        page_init(page);
+    if ( ((memoryManager*)page)->heap_listp == 0){
+        page_init(((memoryManager*)page));
     }
     
     PUT(HDRP(bp), PACK(size, 0));
@@ -220,9 +299,8 @@ page_free(memoryManager* page, void *bp){
  */
 void
 mydeallocate(void *ptr, char* fileName, int lineNo, int flag){
-    pid_t runningThread = getRunningThread();
-    return page_free(pages[runningThread], ptr);
-}
+    //unsigned int pageNum = virtualPageMapping(getVirtualPageOfRunningThread());
+    return page_free(pages[1], ptr);}
 
 /*
  * page_release- release page resources to other threads
@@ -237,7 +315,7 @@ void page_release(int pageNum){
  * gradually extends to a larger size
  */
 
-static void *extend_heap(memoryManager* page, size_t words)
+static void *extend_heap(void* page, size_t words)
 {
     char *bp;
     size_t size;
@@ -246,7 +324,7 @@ static void *extend_heap(memoryManager* page, size_t words)
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     if ((long)(bp = page_sbrk(page, size)) == -1)
         return NULL;
-
+    
     /* Initialize free block header/footer and the epilogue header */
     PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
     PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
@@ -319,13 +397,13 @@ static void place(void *bp, size_t asize)
  * find_fit - Find a fit for a block with asize bytes
  */
 
-static void *find_fit(memoryManager* page, size_t asize)
+static void *find_fit(void* page, size_t asize)
 {
     
     /* First fit search */
     void *bp;
     
-    for (bp = page->heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (bp = ((memoryManager*)page)->heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
@@ -361,16 +439,20 @@ mem_printf(void){
     }
 }
 
-/*
- * 
-int
-main(){
-    mem_init();
 
-    page_malloc(pages[1], 11);
-    page_malloc(pages[1], 11);
-    page_malloc(pages[1], PAGE_SIZE);
+ int
+ min(){
+     mem_init();
+     //mem_printf();
+     char *p = page_malloc(pages[1], PAGE_SIZE - 32);
+     
+     char *s = page_malloc(pages[1], 128);
 
-}
+     printf("page %p, block %p\n",  pages[1]->mem_heap, p);
 
- */
+     printf("page %p, block %p\n",  pages[1]->mem_heap, s);
+     //page_malloc(pages[1], 11);
+     //page_malloc(pages[1], PAGE_SIZE);
+     return 0;
+ }
+
