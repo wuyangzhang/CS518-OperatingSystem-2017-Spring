@@ -40,7 +40,7 @@ enum THREAD_STATE{
 typedef struct _my_pthread_t{
     ucontext_t _ucontext_t;
     pid_t _self_id;
-    int usedPage[MAX_PAGE];
+    int pageTable[MAX_PAGE];
     int currentPage;
     char stack[MIN_STACK];
     void* (*func)(void *arg);
@@ -61,7 +61,6 @@ typedef struct _Node
 {
     my_pthread_t* thread;
     struct _Node* next;
-    //struct _Node* prev;
 }Node;
 
 typedef struct{

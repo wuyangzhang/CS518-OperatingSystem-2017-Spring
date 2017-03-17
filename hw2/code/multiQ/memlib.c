@@ -41,11 +41,21 @@
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
 #/* Set and get the availability bit */
-#define GET_FREE_PAGE(page)    ((((page)->mem_heap)+1) or 1) 
-#define SET_FREE_PAGE(page)    ((((page)->mem_heap)+1) and 1)
-#define SET_USE_PAGE(page)    ((((page)->mem_heap)+1) and 0)
 
+inline char*
+GET_FREE_PAGE(memoryManager* p){
+    return ((*(unsigned int *)(p->mem_heap + 1)) | 0x1);
+}
 
+inline void
+SET_FREE_PAGE(memoryManager* p){
+    (*(unsigned int *)(p->mem_heap + 1)) & 0x0;
+}
+
+inline void
+SET_USE_PAGE(memoryManager* p){
+    (*(unsigned int *)(p->mem_heap + 1)) & 0x1;
+}
 
 /* --------------------------------------------------------------------------
  *                  Phrase 2: Virtual Memory
@@ -261,7 +271,7 @@ allocate_frame(){
  */
 void
 swap_frame(memoryManager* oldPage, memoryManager* newPage){
-    SET_USE_PAGE(newPage->mem_heap);
+    SET_USE_PAGE(newPage);
     newPage->mem_brk = newPage->heap_listp + (oldPage->heap_listp - oldPage->mem_brk);
     memcpy(newPage-> mem_heap, oldPage->mem_heap, PAGE_SIZE);
 }
@@ -402,8 +412,7 @@ mydeallocate(void *ptr, char* fileName, int lineNo, int flag){
  * page_release- release page resources to other threads
  */
 void page_release(int pageNum){
-    SET_
-    pages[pageNum]->page_available = '0';
+    SET_FREE_PAGE(pages[pageNum]->mem_heap);
 }
 
 /*

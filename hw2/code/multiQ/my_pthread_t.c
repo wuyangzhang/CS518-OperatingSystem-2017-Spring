@@ -266,7 +266,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
     /* set all frame unused */
     int i;
     for(i = 0; i < MAX_PAGE; i++){
-        thread->usedPage[i] = -1;
+        thread->pageTable[i] = -1;
     }
 
     /* init available frame for this thread */
@@ -511,7 +511,7 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 
 void allocateFrame(my_pthread_t* thread){
     
-    thread->usedPage[thread->currentPage] = allocate_frame();
+    thread->pageTable[thread->currentPage] = allocate_frame();
 }
 
 /*
@@ -524,19 +524,19 @@ void updateFrame(my_pthread_t* thread){
     }
     
     int page = thread->currentPage;
-    if(++thread->usedPage[page] > MAX_PAGE){
+    if(++thread->pageTable[page] > MAX_PAGE){
         perror("Error: All pages has been used!\n");
         return;
     }
 
-    thread->usedPage[page + 1] = ++thread->usedPage[page];
+    thread->pageTable[page + 1] = ++thread->pageTable[page];
 }
 /*
  *  -getUsingFrame
  *  @Return page using table to memory
  */
 int* getUsingFrame(my_pthread_t* pthread){
-    return pthread->usedPage;
+    return pthread->pageTable;
 }
 
 /*
