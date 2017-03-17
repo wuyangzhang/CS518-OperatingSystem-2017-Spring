@@ -5,7 +5,7 @@
 
 
 #include <stdlib.h>
-#include <sys/ucontext.h>
+#include <ucontext.h>
 #include <sys/time.h>
 #include <time.h>
 #include <signal.h>
@@ -41,7 +41,7 @@ typedef struct _my_pthread_t{
     ucontext_t _ucontext_t;
     pid_t _self_id;
     int pageTable[MAX_PAGE];
-    int currentPage;
+    int currentUsePage;
     char stack[MIN_STACK];
     void* (*func)(void *arg);
     void* arg;
@@ -99,6 +99,6 @@ int* getUsingFrame(my_pthread_t* pthread);
 void allocateFrame(my_pthread_t* thread);
 
 my_pthread_t* getCurrentRunningThread();
-void updateFrame(my_pthread_t* thread);
+void updateFrame(my_pthread_t* thread, int frame);
 
 #endif

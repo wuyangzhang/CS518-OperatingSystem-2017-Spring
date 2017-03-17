@@ -42,19 +42,19 @@
 
 #/* Set and get the availability bit */
 
-inline char*
+inline static char*
 GET_FREE_PAGE(memoryManager* p){
-    return ((*(unsigned int *)(p->mem_heap + 1)) | 0x1);
+    return *(p->mem_heap + 1) & 0x01;
 }
 
-inline void
+inline static void
 SET_FREE_PAGE(memoryManager* p){
-    (*(unsigned int *)(p->mem_heap + 1)) & 0x0;
+    *(p->mem_heap + 1) | 0x00;
 }
 
-inline void
+inline static void
 SET_USE_PAGE(memoryManager* p){
-    (*(unsigned int *)(p->mem_heap + 1)) & 0x1;
+    *(p->mem_heap + 1) & 0x01;
 }
 
 /* --------------------------------------------------------------------------
@@ -100,9 +100,6 @@ static void place(void *bp, size_t asize);
 static void *find_fit(void* page, size_t asize);
 static void *coalesce(void *bp);
 static void printblock(void *bp);
-
-
-
 
 /*
  * - mem_init
@@ -271,9 +268,18 @@ allocate_frame(){
  */
 void
 swap_frame(memoryManager* oldPage, memoryManager* newPage){
-    SET_USE_PAGE(newPage);
-    newPage->mem_brk = newPage->heap_listp + (oldPage->heap_listp - oldPage->mem_brk);
-    memcpy(newPage-> mem_heap, oldPage->mem_heap, PAGE_SIZE);
+    int old_offset = oldPage->mem_brk - oldPage->mem_heap;
+    char* swapSpace = (char*)malloc(old_offset);
+    
+    memcpy(swapSpace, oldPage->mem_heap, old_offset);
+    
+    memcpy(oldPage->mem_heap, newPage->mem_heap, newPage->mem_brk - newPage->mem_heap);
+    oldPage->mem_brk = oldPage->mem_heap + (newPage->mem_brk - newPage->mem_heap);
+    
+    memcpy(newPage->mem_heap, swapSpace, old_offset);
+    newPage->mem_brk = newPage->mem_heap + old_offset;
+    
+    free(swapSpace);
 }
 
 /*
@@ -341,26 +347,37 @@ page_malloc(memoryManager* page, size_t size){
          return bp;
     }
     
-    /* Allocate a new frame. Check the availability of the upper frame*/
-    if(GET_FREE_PAGE(getNextPage(page)) != 0){
-        /* swap the upper frame */
-        int frame;
-        if((frame = allocate_frame()) == -1){
-            /* TODO swap the frame */
-        }else{
-            /* swap the upper frame to this new frame */
-            if(pages[frame]->heap_listp == 0){
-                //page_init(pages[frame]);
-            }
-            //swap_frame(getNextPage(page), pages[frame]);
-        }
-       
+    
+    /* 
+     * The current requested page is full.
+     * Allocate a new frame. Check the availability of the upper frame
+     */
+    memoryManager* nextPage = getNextPage(page);
+    if(GET_FREE_PAGE(nextPage) == 0){
+        updateFrame(getCurrentRunningThread(), nextPage->pageId);
+        return page_malloc(getNextPage(page), size);
     }
+    
+    /* 
+     * The next page is not available, but can find other available pages
+     * swap the upper frame to this new frame 
+     */
+    int frame;
+    if((frame = allocate_frame()) != -1){
+        //swap the next to this new frame
+        
+        //use this next frame
+    }
+    if(pages[frame]->heap_listp == 0){
+            //page_init(pages[frame]);
+    }
+    
+        
     
     /* update a new assigned current page for the current thread */
     //updateFrame(getCurrentRunningThread());
-    return page_malloc(getNextPage(page), size);
-   
+    
+    return NULL;
 }
 
 /*
@@ -369,10 +386,18 @@ page_malloc(memoryManager* page, size_t size){
 void*
 myallocate(size_t size, char* fileName, int lineNo, int flag){
     printf("thread %d allocates %zu\n ", getCurrentRunningThread()->_self_id, size);
+    
     if(flag == MEMORY_LIB){
         
-    }else if(flag == MEMORY_THREAD){
-        int page = getCurrentRunningThread()->currentPage;
+    }
+    
+    if(flag == MEMORY_THREAD){
+        int page = getCurrentRunningThread()->currentUsePage;
+        /* initiate a new page for this thread */
+        if(page == -1){
+            allocateFrame(getCurrentRunningThread());
+        }
+        
         return page_malloc(pages[page], size);
     }else{
         perror("Error: Unrecognized flag!\n");
@@ -412,7 +437,7 @@ mydeallocate(void *ptr, char* fileName, int lineNo, int flag){
  * page_release- release page resources to other threads
  */
 void page_release(int pageNum){
-    SET_FREE_PAGE(pages[pageNum]->mem_heap);
+    SET_FREE_PAGE(pages[pageNum]);
 }
 
 /*
@@ -583,16 +608,39 @@ void test_pageProtect(){
     printf("%s\n", pages[1]->heap_listp );
 
 }
+
+void test_swap(){
+    mem_init();
+    int *p = page_malloc(pages[1], 100);
+    *p = 100;
+    int *q = page_malloc(pages[2], 200);
+    *q = 200;
+    
+    //printf("page1 p %p, page2 q %p\n", pages[1]->mem_heap, pages[2]->mem_heap);
+
+    printf("page1 p %d, page2 q %d\n", *p, *q);
+
+    printf("page1 brk %d, page2 brk %d\n", pages[1]->mem_brk - pages[1]->mem_heap, pages[2]->mem_brk - pages[2]->mem_heap);
+    
+    swap_frame(pages[1], pages[2]);
+    
+    printf("page1 p %d, page2 q %d\n", *p, *q);
+    printf("page1 brk %d, page2 brk %d\n", pages[1]->mem_brk - pages[1]->mem_heap, pages[2]->mem_brk - pages[2]->mem_heap);
+    
+    
+   int test =  (( ((int)p) % 4096 )+ pages[2]->mem_heap);
+   printf("test %p", test);
+      
+}
  int
  main(){
-     mem_init();
-     //mem_printf();
-     char *p = page_malloc(pages[1], PAGE_SIZE - 32);
+    
+     test_swap();
 
-     char *s = page_malloc(pages[1], 128);
-
-     swap_frame(pages[1], pages[2]);
      
+     
+     /*
+      
      struct sigaction sa;
      sa.sa_flags = SA_SIGINFO;
      sigemptyset(&sa.sa_mask);
@@ -601,12 +649,10 @@ void test_pageProtect(){
          printf("Fatal error setting up signal handler\n");
          exit(EXIT_FAILURE);
      }
+     */
      
      
-     
-     
-     test_pageProtect();
-     //printf("page %p, block %p\n",  pages[1]->mem_brk, p);
+      //printf("page %p, block %p\n",  pages[1]->mem_brk, p);
 
      //printf("page %p, block %p\n",  pages[2]->mem_brk, s);
      

@@ -25,6 +25,7 @@
 /* place memory manager at the begining of each page */
 typedef struct memoryManager_t{
     int pageId;
+    int threadId;
     char* mem_heap; /* point to the first byte of page */
     char* mem_brk; /* points to the last byte of page puls 1*/
     char* mem_max_addr; /* max page addr plus 1 */

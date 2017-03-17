@@ -268,7 +268,7 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
     for(i = 0; i < MAX_PAGE; i++){
         thread->pageTable[i] = -1;
     }
-
+    thread->currentUsePage = -1;
     /* init available frame for this thread */
 //    thread->currentPage = 0;
 //    allocate_frame(thread);
@@ -421,7 +421,6 @@ schedule(){
             multiQueue_push(pendingThreadQueue, scheduler.runningThread);
             break;
         case(TERMINATED)://thread terminate
-            //printf("thread %d termimated!\n", scheduler.runningThread->_self_id);
             queue_push(finishedThreadQueue, scheduler.runningThread);
             break;
         default:
@@ -510,26 +509,17 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
  */
 
 void allocateFrame(my_pthread_t* thread){
-    
-    thread->pageTable[thread->currentPage] = allocate_frame();
+    int page = allocate_frame();
+    thread->pageTable[page] = page;
+    thread->currentUsePage = page;
 }
 
 /*
  * update frame
  */
-void updateFrame(my_pthread_t* thread){
-    if(++thread->currentPage >= MAX_PAGE){
-        perror("Error: All pages has been used!\n");
-        return;
-    }
-    
-    int page = thread->currentPage;
-    if(++thread->pageTable[page] > MAX_PAGE){
-        perror("Error: All pages has been used!\n");
-        return;
-    }
-
-    thread->pageTable[page + 1] = ++thread->pageTable[page];
+void updateFrame(my_pthread_t* thread, int frame){
+    thread->currentUsePage = frame;
+    thread->pageTable[frame] = frame;
 }
 /*
  *  -getUsingFrame
