@@ -8,7 +8,7 @@
 
 #include "my_pthread_t.h"
 
-int debug = 1;
+int debug = 0;
 static schedule_t scheduler;
 static int counter = 0;
 static my_pthread_mutex_t countLock;
@@ -672,9 +672,9 @@ int sum(int num){
 void*
 test1(int num){
     printf("test 1");
-    //char* p = (char*)myallocate(100, __FILE__, __LINE__, 1);
+    char* p = (char*)myallocate(100, __FILE__, __LINE__, 1);
     sum(num);
-    //mydeallocate(p,  __FILE__, __LINE__, 1);
+    mydeallocate(p,  __FILE__, __LINE__, 1);
     
     return NULL;
 }
@@ -701,10 +701,10 @@ test2(){
 }
 
 int
-main(){
+min(){
     
     
-    const int threadNum = 1;
+    const int threadNum = 3;
     
     start();
     timeStart = clock();
@@ -713,7 +713,7 @@ main(){
     
     int i;
     for(i = 0; i < threadNum; i++){
-        my_pthread_create(&thread[i], NULL, &test2, 100);
+        my_pthread_create(&thread[i], NULL, &test1, 100);
     }
     
     while(1){

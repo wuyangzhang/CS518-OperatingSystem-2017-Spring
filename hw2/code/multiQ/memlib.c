@@ -4,13 +4,15 @@
  *
  *
  */
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/mman.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/malloc.h>
+#include <malloc.h>
+#include <signal.h>
 
 #include "memlib.h"
 
@@ -37,6 +39,12 @@
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+
+#/* Set and get the availability bit */
+#define GET_FREE_PAGE(page)    ((((page)->mem_heap)+1) or 1) 
+#define SET_FREE_PAGE(page)    ((((page)->mem_heap)+1) and 1)
+#define SET_USE_PAGE(page)    ((((page)->mem_heap)+1) and 0)
+
 
 
 /* --------------------------------------------------------------------------
@@ -83,12 +91,15 @@ static void *find_fit(void* page, size_t asize);
 static void *coalesce(void *bp);
 static void printblock(void *bp);
 
+
+
+
 /*
  * - mem_init
  * Initialize the space for all pages that
  * emulate a continuous 8 MB physical memory
  *
- *          Page Format
+ *          Frame Format
  * ---------------------------------------
  *          page_available
  *          threadId;
@@ -100,14 +111,37 @@ static void printblock(void *bp);
  *          prologue header
  *          prologue footer
  *          epilogue header
- * ----------------------------------------
- */
-
-/* mem_init 
- * init frame space
+ * 
+ *              frame 1
+ * ------------------------------------- <-------------- mem_heap & mem_brk
+ * |                                   | 
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * ------------------------------------- <-------------- mem_max_addr
+ * 
+ *               frame 2
+ * ------------------------------------- <-------------- mem_heap & mem_brk
+ * |                                   | 
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * ------------------------------------- <-------------- mem_max_addr
+ * 
 */
 int
 mem_init(){
+
     char *emulated_memory;
     
     /* memory align to the size of sysconf(_SC_PAGE_SIZE) */
@@ -119,7 +153,6 @@ mem_init(){
     for(i = 0; i < MAX_PAGE; i++){
         pages[i] = (memoryManager*)malloc(sizeof(memoryManager));
         pages[i]->pageId = i;
-        pages[i]->page_available = '0';
         pages[i]->mem_heap = next;
         pages[i]->mem_brk = pages[i]->mem_heap;
         pages[i]->mem_max_addr = pages[i]->mem_heap + PAGE_SIZE;
@@ -138,14 +171,30 @@ int thread_mem_init(int threadId){
     return 0;
 }
 
-
+/*
+ *  page_init: initialize a new page
+ * *  *  frame format:
+ *              frame 1
+ * ------------------------------------- <-------------- mem_heap heap_listp
+ * |                                   | 4 Byte
+ * |                                   | <-------------- prologue header
+ * |                                   | 8 Byte
+ * |                                   | <-------------- progogue footer 
+ * |                                   | 12 Byte
+ * |                                   | <-------------- epilogue header
+ * |                                   |
+ * |                                   |
+ * |                                   |
+ * ------------------------------------- <-------------- mem_max_addr
+ * 
+ */
 
 int
 page_init(memoryManager* page){
     
-    page->page_available = '1';
-    
+    SET_USE_PAGE(page);
     /*cast to physical page or virtual page */
+
 
     if((page->heap_listp = page_sbrk(page, 4*WSIZE)) == (void*) -1){
         return -1;
@@ -199,12 +248,50 @@ int
 allocate_frame(){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
-        if(pages[i]->page_available == '0'){
+        if(GET_FREE_PAGE(pages[i]) == 0){
             return i;
         }
     }
     perror("Error: cannot find available page!\n");
     return -1;
+}
+
+/*
+    -swap_frame
+ */
+void
+swap_frame(memoryManager* oldPage, memoryManager* newPage){
+    SET_USE_PAGE(newPage->mem_heap);
+    newPage->mem_brk = newPage->heap_listp + (oldPage->heap_listp - oldPage->mem_brk);
+    memcpy(newPage-> mem_heap, oldPage->mem_heap, PAGE_SIZE);
+}
+
+/*
+    -page protect
+ *  protect the pages when they are swapped out
+ */
+
+void
+page_protect(int* usedPage, int flag){
+    
+    int i = 0;
+    while(usedPage[i] != -1){
+        if(flag == 0){
+           mprotect(pages[usedPage[i]]->mem_heap, PAGE_SIZE, PROT_NONE);
+        }else if(flag == 1){
+            mprotect(pages[usedPage[i]]->mem_heap, PAGE_SIZE, PROT_READ | PROT_WRITE);
+        }else{
+            perror("unrecognized flag!\n");
+            return;
+        }
+        i++;
+    }
+    
+}
+
+static void 
+handler(int sig, siginfo_t *si, void *unused){
+    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
 }
 
 
@@ -244,14 +331,23 @@ page_malloc(memoryManager* page, size_t size){
          return bp;
     }
     
-    /* Allcoate a new frame. Check the availability of the upper frame*/
-    if(getNextPage(page)->page_available != '0'){
-        /* evict the upper frame */
-        
+    /* Allocate a new frame. Check the availability of the upper frame*/
+    if(GET_FREE_PAGE(getNextPage(page)) != 0){
+        /* swap the upper frame */
+        int frame;
+        if((frame = allocate_frame()) == -1){
+            /* TODO swap the frame */
+        }else{
+            /* swap the upper frame to this new frame */
+            if(pages[frame]->heap_listp == 0){
+                //page_init(pages[frame]);
+            }
+            //swap_frame(getNextPage(page), pages[frame]);
+        }
        
     }
     
-    /* update thread current page */
+    /* update a new assigned current page for the current thread */
     //updateFrame(getCurrentRunningThread());
     return page_malloc(getNextPage(page), size);
    
@@ -306,6 +402,7 @@ mydeallocate(void *ptr, char* fileName, int lineNo, int flag){
  * page_release- release page resources to other threads
  */
 void page_release(int pageNum){
+    SET_
     pages[pageNum]->page_available = '0';
 }
 
@@ -431,6 +528,19 @@ static void printblock(void *bp)
            fsize, (falloc ? 'a' : 'f'));
 }
 
+/*
+ * -update_address_shuffle_page
+ *  Based on the input address, the memory should track the page including this address.
+ * If this address is protected by other threads, the memory manager will indicate the 
+ * current address of this address.
+ *   0x7f79c79f5018, page start 0x7f79c79f5008
+
+ */
+void*
+update_address_shuffle_page(void* addr){
+    
+}
+
 void
 mem_printf(void){
     int i;
@@ -439,20 +549,60 @@ mem_printf(void){
     }
 }
 
+void
+pageProtect_handler(int sig, siginfo_t *si, void* unused){
+    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
+    sleep(2);
+}
 
+#define handle_error(msg) \
+           do { perror(msg); exit(EXIT_FAILURE); } while (0)
+void test_pageProtect(){
+    char* emulated_memory;
+    posix_memalign( (void*)(&emulated_memory), sysconf(_SC_PAGE_SIZE),PAGE_SIZE);
+    
+    printf("start addr %p\n", emulated_memory);
+    
+    
+    printf("%p\n", pages[1]->mem_heap);
+    int r;
+    if( ( r = mprotect(pages[1]->mem_heap, PAGE_SIZE, PROT_NONE)) != 0){
+        handle_error("mprotect");
+    }
+
+    *pages[1]->heap_listp = 'a';
+    printf("%s\n", pages[1]->heap_listp );
+
+}
  int
- min(){
+ main(){
      mem_init();
      //mem_printf();
      char *p = page_malloc(pages[1], PAGE_SIZE - 32);
-     
+
      char *s = page_malloc(pages[1], 128);
 
-     printf("page %p, block %p\n",  pages[1]->mem_heap, p);
+     swap_frame(pages[1], pages[2]);
+     
+     struct sigaction sa;
+     sa.sa_flags = SA_SIGINFO;
+     sigemptyset(&sa.sa_mask);
+     sa.sa_sigaction = pageProtect_handler;
+     if(sigaction(SIGSEGV, &sa, NULL) == -1){
+         printf("Fatal error setting up signal handler\n");
+         exit(EXIT_FAILURE);
+     }
+     
+     
+     
+     
+     test_pageProtect();
+     //printf("page %p, block %p\n",  pages[1]->mem_brk, p);
 
-     printf("page %p, block %p\n",  pages[1]->mem_heap, s);
+     //printf("page %p, block %p\n",  pages[2]->mem_brk, s);
+     
      //page_malloc(pages[1], 11);
      //page_malloc(pages[1], PAGE_SIZE);
      return 0;
- }
+}
 
