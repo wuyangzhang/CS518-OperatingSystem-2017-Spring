@@ -42,19 +42,34 @@
 
 #/* Set and get the availability bit */
 
-inline static char*
+int
 GET_FREE_PAGE(memoryManager* p){
-    return *(p->mem_heap + 1) & 0x01;
+    return ((int)p->mem_state) & 0x01;
 }
 
-inline static void
+void
 SET_FREE_PAGE(memoryManager* p){
-    *(p->mem_heap + 1) | 0x00;
+    p->mem_state = ((int)p->mem_state) & 0xFFFE;
 }
 
-inline static void
+void
 SET_USE_PAGE(memoryManager* p){
-    *(p->mem_heap + 1) & 0x01;
+    p->mem_state = ((int)p->mem_state) | 0x01;
+}
+
+int
+GET_IN_MEM_STATE(memoryManager* p){
+    return ((int)p->mem_state) & 0x02;
+}
+
+void
+SET_IN_MEM_STATE(memoryManager* p){
+    p->mem_state = ((int)p->mem_state) | 0x02;
+}
+
+void
+SET_IN_FILE_STATE(memoryManager* p){
+    p->mem_state = ((int)p->mem_state) & 0xFFFD;
 }
 
 /* --------------------------------------------------------------------------
@@ -159,8 +174,10 @@ mem_init(){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
         pages[i] = (memoryManager*)malloc(sizeof(memoryManager));
+        pages[i]->threadPtr = (pageDir*)malloc(sizeof(pageDir));
         pages[i]->pageId = i;
         pages[i]->mem_heap = next;
+        pages[i]->mem_state = next;
         pages[i]->mem_brk = pages[i]->mem_heap;
         pages[i]->mem_max_addr = pages[i]->mem_heap + PAGE_SIZE;
         pages[i]->heap_listp = 0;
@@ -252,7 +269,7 @@ page_sbrk(void* page, int incr){
  * allocate_frame - Find a void frame
  */
 int
-allocate_frame(){
+find_free_frame(){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
         if(GET_FREE_PAGE(pages[i]) == 0){
@@ -263,11 +280,16 @@ allocate_frame(){
     return -1;
 }
 
+void setPageTableThreadPtr(pageDir* page_dir, int pageNum){
+    pages[pageNum]->threadPtr = page_dir;
+}
+
 /*
     -swap_frame
  */
 void
 swap_frame(memoryManager* oldPage, memoryManager* newPage){
+    
     int old_offset = oldPage->mem_brk - oldPage->mem_heap;
     char* swapSpace = (char*)malloc(old_offset);
     
@@ -280,6 +302,13 @@ swap_frame(memoryManager* oldPage, memoryManager* newPage){
     newPage->mem_brk = newPage->mem_heap + old_offset;
     
     free(swapSpace);
+    
+    pages[newPage->pageId]->threadPtr = pages[oldPage->pageId]->threadPtr;
+    pages[newPage->pageId]->threadPtr->page_redirect = newPage->pageId;
+    
+    //pages[oldPage->pageId]->threadPtr = getCurrentRunningThread()->pageTable[oldPage->pageId];
+    allocateFrame(getCurrentRunningThread(), oldPage->pageId);  
+    
 }
 
 /*
@@ -288,28 +317,27 @@ swap_frame(memoryManager* oldPage, memoryManager* newPage){
  */
 
 void
-page_protect(int* usedPage, int flag){
-    
-    int i = 0;
-    while(usedPage[i] != -1){
-        if(flag == 0){
-           mprotect(pages[usedPage[i]]->mem_heap, PAGE_SIZE, PROT_NONE);
-        }else if(flag == 1){
-            mprotect(pages[usedPage[i]]->mem_heap, PAGE_SIZE, PROT_READ | PROT_WRITE);
-        }else{
-            perror("unrecognized flag!\n");
-            return;
+page_protect(int flag){
+    printf("%d protect page for thread %d\n", flag, getCurrentRunningThread()->_self_id);
+
+    for(int i = 0; i < MAX_PAGE; i++){
+        if(getCurrentRunningThread()->pageTable[i]->in_use_state == 0 || getCurrentRunningThread()->pageTable[i]->page_redirect != i ){
+            if(flag == 0){
+               mprotect(pages[i]->mem_heap, PAGE_SIZE, PROT_NONE);
+            }else if(flag == 1){
+                mprotect(pages[i]->mem_heap, PAGE_SIZE, PROT_READ | PROT_WRITE);
+            }else{
+                perror("unrecognized flag!\n");
+                return;
+            }
         }
-        i++;
     }
-    
 }
 
 static void 
 handler(int sig, siginfo_t *si, void *unused){
     printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
 }
-
 
 /*
  * mm_malloc - Allocate a block with at least size bytes of payload
@@ -354,8 +382,9 @@ page_malloc(memoryManager* page, size_t size){
      */
     memoryManager* nextPage = getNextPage(page);
     if(GET_FREE_PAGE(nextPage) == 0){
-        updateFrame(getCurrentRunningThread(), nextPage->pageId);
-        return page_malloc(getNextPage(page), size);
+        //updateFrame(getCurrentRunningThread(), nextPage->pageId);
+        allocateFrame(getCurrentRunningThread(), nextPage->pageId);
+        return page_malloc(nextPage, size);
     }
     
     /* 
@@ -363,10 +392,11 @@ page_malloc(memoryManager* page, size_t size){
      * swap the upper frame to this new frame 
      */
     int frame;
-    if((frame = allocate_frame()) != -1){
+    if((frame = find_free_frame()) != -1){
         //swap the next to this new frame
-        
+        swap_frame(nextPage, pages[frame]);
         //use this next frame
+        
     }
     if(pages[frame]->heap_listp == 0){
             //page_init(pages[frame]);
@@ -385,7 +415,7 @@ page_malloc(memoryManager* page, size_t size){
  */
 void*
 myallocate(size_t size, char* fileName, int lineNo, int flag){
-    printf("thread %d allocates %zu\n ", getCurrentRunningThread()->_self_id, size);
+    
     
     if(flag == MEMORY_LIB){
         
@@ -393,11 +423,12 @@ myallocate(size_t size, char* fileName, int lineNo, int flag){
     
     if(flag == MEMORY_THREAD){
         int page = getCurrentRunningThread()->currentUsePage;
-        /* initiate a new page for this thread */
+        printf("thread %d allocates %zu in page %d\n ", getCurrentRunningThread()->_self_id, size, page);
+        /* initiate a new page for this thread 
         if(page == -1){
             allocateFrame(getCurrentRunningThread());
         }
-        
+        */
         return page_malloc(pages[page], size);
     }else{
         perror("Error: Unrecognized flag!\n");
@@ -533,8 +564,8 @@ static void *find_fit(void* page, size_t asize)
     
     /* First fit search */
     void *bp;
-    
-    for (bp = ((memoryManager*)page)->heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (bp = ((memoryManager*)page)->heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {  
+        printf("bp: %p, size: %p, next: %p, alloc: %d, blocksize: %d\n",bp,GET_SIZE(HDRP(bp)),NEXT_BLKP(bp),GET_ALLOC(HDRP(bp)),GET_SIZE(HDRP(bp)));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
@@ -557,7 +588,7 @@ static void printblock(void *bp)
         return;
     }
     
-    printf("%p: header: [%p:%c] footer: [%p:%c]\n", bp,
+    printf("%p: header: [%zd:%c] footer: [%p:%c]\n", bp,
            hsize, (halloc ? 'a' : 'f'),
            fsize, (falloc ? 'a' : 'f'));
 }
@@ -575,18 +606,38 @@ update_address_shuffle_page(void* addr){
     
 }
 
+int
+getPageNumFromAddr(void* addr){
+    int offset = (int)addr - (int)pages[0]->mem_heap;
+    return offset/4096;
+}
+
+void
+pageProtect_handler(int sig, siginfo_t *si, void* unused){
+    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
+    int pageNum = getPageNumFromAddr(si->si_addr);
+    printf("Page Number is %d.\n",pageNum);
+    sleep(2);
+}
+
+void 
+seg_fault_handle_init(){
+    
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_sigaction = pageProtect_handler;
+    if(sigaction(SIGSEGV, &sa, NULL) == -1){
+        printf("Fatal error setting up signal handler\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
 void
 mem_printf(void){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
         printf(" mem heap %p, brk %p, max %p heaplist%p\n", pages[i]->mem_heap, pages[i]->mem_brk, pages[i]->mem_max_addr, pages[i]->heap_listp);
     }
-}
-
-void
-pageProtect_handler(int sig, siginfo_t *si, void* unused){
-    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
-    sleep(2);
 }
 
 #define handle_error(msg) \
@@ -632,13 +683,49 @@ void test_swap(){
    printf("test %p", test);
       
 }
- int
- main(){
-    
-     test_swap();
 
-     
-     
+void test_check_state(){
+    int x = GET_FREE_PAGE(pages[1]);
+    printf("%d\n",x);
+    SET_USE_PAGE(pages[1]);
+    x = GET_FREE_PAGE(pages[1]);
+    printf("%d\n",x);
+    SET_USE_PAGE(pages[1]);
+    x = GET_FREE_PAGE(pages[1]);
+    printf("%d\n",x);
+    SET_FREE_PAGE(pages[1]);
+    x = GET_FREE_PAGE(pages[1]);
+    printf("%d\n",x);
+    SET_FREE_PAGE(pages[1]);
+    x = GET_FREE_PAGE(pages[1]);
+    printf("%d\n",x);
+    
+    x = GET_IN_MEM_STATE(pages[1]);
+    printf("%d\n",x);
+    SET_IN_MEM_STATE(pages[1]);
+    x = GET_IN_MEM_STATE(pages[1]);
+    printf("%d\n",x);
+    SET_USE_PAGE(pages[1]);
+    SET_IN_MEM_STATE(pages[1]);
+    x = GET_IN_MEM_STATE(pages[1]);
+    printf("%d\n",x);
+    SET_IN_FILE_STATE(pages[1]);
+    x = GET_IN_MEM_STATE(pages[1]);
+    printf("%d\n",x);
+    SET_IN_FILE_STATE(pages[1]);
+    x = GET_IN_MEM_STATE(pages[1]);
+    printf("%d\n",x);
+}
+
+ int
+ min(){
+    
+     //test_swap();
+
+    mem_init();
+    
+    
+    
      /*
       
      struct sigaction sa;

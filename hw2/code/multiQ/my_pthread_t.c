@@ -266,9 +266,18 @@ my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr,
     /* set all frame unused */
     int i;
     for(i = 0; i < MAX_PAGE; i++){
-        thread->pageTable[i] = -1;
+        thread->pageTable[i] = (pageDir*)malloc(sizeof(pageDir));
+        thread->pageTable[i]->in_memory_state = 0;
+        thread->pageTable[i]->in_use_state = 0;
+        thread->pageTable[i]->page_redirect = -1;
     }
-    thread->currentUsePage = -1;
+    int frame = find_free_frame();
+    if(frame!=-1){
+        printf("[PTHREAD] Allocate Page %d to Thread %d!\n", frame,thread->_self_id);
+        allocateFrame(thread, frame);
+    }else{
+        perror("Memory Full!");
+    }
     /* init available frame for this thread */
 //    thread->currentPage = 0;
 //    allocate_frame(thread);
@@ -436,6 +445,10 @@ schedule(){
         if(round % (scheduler.total_pendingThread * QUEUECHECK + 1) == 0){
             threadPriority_scan(pendingThreadQueue,1);
         }
+        // Unprotect the pages before context switch
+        if(scheduler.runningThread->_self_id!=-1){
+            page_protect(1);
+        }
         
         my_pthread_t* currThread = multiQueue_pop(pendingThreadQueue);
         scheduler.runningThread = currThread;
@@ -447,6 +460,11 @@ schedule(){
         
         currThread->state = RUNNING;
         currThread->runningCounter++;
+        
+        // Protect the pages after context switch
+        page_protect(0);
+        printf("[Scheduler] switch to thread %d \n", currThread->_self_id);
+
         setcontext(&currThread->_ucontext_t);
     }else{
         timeEnd = clock() - timeStart;
@@ -507,20 +525,22 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
 /*
  * alloc a frame
  */
-
-void allocateFrame(my_pthread_t* thread){
-    int page = allocate_frame();
-    thread->pageTable[page] = page;
-    thread->currentUsePage = page;
-}
-
-/*
- * update frame
- */
-void updateFrame(my_pthread_t* thread, int frame){
+void allocateFrame(my_pthread_t* thread, int frame){
+    thread->pageTable[frame]->in_memory_state = 1;
+    thread->pageTable[frame]->in_use_state = 1;
+    thread->pageTable[frame]->page_redirect = frame;
+    setPageTableThreadPtr(thread->pageTable[frame], frame);
     thread->currentUsePage = frame;
-    thread->pageTable[frame] = frame;
+    SET_USE_PAGE(pages[frame]);
 }
+//
+///*
+// * update frame
+// */
+//void updateFrame(my_pthread_t* thread, int frame){
+//    thread->currentUsePage = frame;
+//    thread->pageTable[frame] = frame;
+//}
 /*
  *  -getUsingFrame
  *  @Return page using table to memory
@@ -631,6 +651,8 @@ start(){
      */
     signal_init();
     
+    seg_fault_handle_init();
+    
     /*
      init memory
      */
@@ -661,11 +683,17 @@ int sum(int num){
 
 void*
 test1(int num){
-    printf("test 1");
-    char* p = (char*)myallocate(100, __FILE__, __LINE__, 1);
+    int static times = 0;
+    times ++;
+    char* p = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
     sum(num);
-    mydeallocate(p,  __FILE__, __LINE__, 1);
     
+    while(times<2){
+        
+    }
+    char* p1 = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
+    //mydeallocate(p,  __FILE__, __LINE__, 1);
+
     return NULL;
 }
 
@@ -691,10 +719,10 @@ test2(){
 }
 
 int
-min(){
+main(){
     
     
-    const int threadNum = 3;
+    const int threadNum = 2;
     
     start();
     timeStart = clock();

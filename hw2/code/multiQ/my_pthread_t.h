@@ -37,10 +37,16 @@ enum THREAD_STATE{
     TERMINATED
 };
 
+typedef struct _my_pageDir_t{
+    int in_use_state;
+    int in_memory_state;
+    int page_redirect;
+}pageDir;
+
 typedef struct _my_pthread_t{
     ucontext_t _ucontext_t;
     pid_t _self_id;
-    int pageTable[MAX_PAGE];
+    pageDir *pageTable[MAX_PAGE];
     int currentUsePage;
     char stack[MIN_STACK];
     void* (*func)(void *arg);
@@ -96,7 +102,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex);
 int my_pthread_mutex_destory(my_pthread_mutex_t* mutex);
 
 int* getUsingFrame(my_pthread_t* pthread);
-void allocateFrame(my_pthread_t* thread);
+void allocateFrame(my_pthread_t* thread, int frame);
 
 my_pthread_t* getCurrentRunningThread();
 void updateFrame(my_pthread_t* thread, int frame);
