@@ -15,7 +15,8 @@
 
 #define BLOCK_SIZE  64
 #define PAGE_SIZE 4096
-#define MAX_PAGE (8*1024*1024/PAGE_SIZE)
+#define MAX_FILE_PAGE (16*1024*1024/PAGE_SIZE)
+#define MAX_PAGE 5//(8*1024*1024/PAGE_SIZE)
 #define MAX_SWAP_PAGE (16*1024*1024/PAGE_SIZE)
 
 /* double word alignment */
@@ -37,6 +38,8 @@ typedef struct memoryManager_t{
 }memoryManager;
 
 memoryManager* pages[MAX_PAGE];
+
+memoryManager* filePages[MAX_FILE_PAGE];
 
 /* init memory when a thread has been created */
 

@@ -72,6 +72,24 @@ SET_IN_FILE_STATE(memoryManager* p){
     p->mem_state = ((int)p->mem_state) & 0xFFFD;
 }
 
+#define handle_error(msg) \
+           do { perror(msg); exit(EXIT_FAILURE); } while (0)
+void
+PROTECT_PAGE(memoryManager* p, int flag){
+    if(flag == 0){
+        if( (mprotect(p->mem_heap, PAGE_SIZE, PROT_NONE)) != 0){
+            handle_error("mprotect");
+        }
+    }else if(flag == 1){
+        if( (mprotect(p->mem_heap, PAGE_SIZE, PROT_READ | PROT_WRITE)) != 0){
+            handle_error("mprotect");
+        };
+    }else{
+        perror("unrecognized flag!\n");
+        return;
+    }
+}
+
 /* --------------------------------------------------------------------------
  *                  Phrase 2: Virtual Memory
  *
@@ -175,6 +193,7 @@ mem_init(){
     for(i = 0; i < MAX_PAGE; i++){
         pages[i] = (memoryManager*)malloc(sizeof(memoryManager));
         pages[i]->threadPtr = (pageDir*)malloc(sizeof(pageDir));
+        memset(pages[i]->threadPtr,0,sizeof(pageDir));
         pages[i]->pageId = i;
         pages[i]->mem_heap = next;
         pages[i]->mem_state = next;
@@ -183,6 +202,21 @@ mem_init(){
         pages[i]->heap_listp = 0;
         next += PAGE_SIZE;
     }
+    
+    for(i = 0; i < MAX_FILE_PAGE; i++){
+        filePages[i] = (memoryManager*)malloc(sizeof(memoryManager));
+        filePages[i]->threadPtr = (pageDir*)malloc(sizeof(pageDir));
+        memset(filePages[i]->threadPtr,0,sizeof(pageDir));
+        filePages[i]->pageId = i;
+        filePages[i]->mem_heap = i*PAGE_SIZE;
+        filePages[i]->mem_state = 0;
+        filePages[i]->mem_brk = i*PAGE_SIZE;
+        filePages[i]->mem_max_addr = filePages[i]->mem_heap + PAGE_SIZE;
+        filePages[i]->heap_listp = 0;
+        next += PAGE_SIZE;
+    }
+    
+    
     
     return 0;
 }
@@ -215,8 +249,6 @@ int thread_mem_init(int threadId){
 
 int
 page_init(memoryManager* page){
-    
-    SET_USE_PAGE(page);
     /*cast to physical page or virtual page */
 
 
@@ -238,6 +270,95 @@ page_init(memoryManager* page){
     if (extend_heap(page, BLOCK_SIZE/WSIZE) == NULL)
         return -1;
     */
+    SET_USE_PAGE(page);
+    return 0;
+}
+
+int 
+file_init(){
+    int X = 16*1024*1024-1;
+    FILE *fp = fopen("hardDrive", "r+");
+    fseek(fp, X , SEEK_SET);
+    fputc('\0', fp);
+
+    fseek(fp, 0 , SEEK_SET);
+    char test[] = "helloworld!";
+    char* t = test;
+    fwrite(t, sizeof(char), sizeof(test), fp);
+
+    fclose(fp);
+    return 0;
+}
+
+/*
+ * mem_to_file - Move page from memory to hard disk(file)
+ */
+void
+mem_to_file(memoryManager* memPage, int pageNum){
+    
+    int mem_p_offset = memPage->mem_brk - memPage->mem_heap;
+    PROTECT_PAGE(memPage, 1);
+    if(fileWriter(memPage->mem_heap, mem_p_offset, pageNum)==-1){
+        printf("page offset not in the correct range.\n");
+        return;
+    }
+    filePages[pageNum]->heap_listp = memPage->heap_listp;
+    filePages[pageNum]->mem_brk = filePages[pageNum]->mem_heap+mem_p_offset;
+    filePages[pageNum]->mem_state = memPage->mem_state;
+    filePages[pageNum]->threadPtr = memPage->threadPtr;
+    filePages[pageNum]->threadPtr->page_redirect = filePages[pageNum]->pageId;
+    filePages[pageNum]->threadPtr->in_memory_state = 0;
+    
+    memPage->threadPtr = (pageDir*)malloc(sizeof(pageDir));
+    memset(memPage->threadPtr,0,sizeof(pageDir));
+    memPage->mem_state = memPage->mem_heap;
+    memPage->mem_brk = memPage->mem_heap;
+    memPage->heap_listp = 0;
+}
+
+void
+file_to_mem(memoryManager* filePage, memoryManager* memPage){
+    int page_addr_hard = filePage->pageId*PAGE_SIZE;
+    FILE *fp = fopen("hardDrive", "r+");
+    fseek(fp, page_addr_hard , SEEK_SET);
+    int page_offset = (int)(filePage->mem_brk-filePage->mem_heap);
+    char *buf = (char*)malloc(page_offset);
+    fread(buf, sizeof(char),page_offset, fp);
+    fclose(fp);
+    
+    memcpy(memPage->mem_heap, buf, page_offset);
+    memPage->mem_state = filePage->mem_state;
+    memPage->heap_listp = filePage->heap_listp;
+    memPage->threadPtr = filePage->threadPtr;
+    memPage->threadPtr->in_memory_state = 1;
+    memPage->threadPtr->page_redirect = memPage->pageId;
+    memPage->mem_brk = memPage->mem_heap + page_offset;
+    
+    // Clean page in hard drive
+    filePage->heap_listp = 0;
+    filePage->mem_brk = filePage->mem_heap;
+    filePage->mem_state = filePage->mem_heap;
+    filePage->threadPtr = (pageDir*)malloc(sizeof(pageDir));
+    memset(filePage->threadPtr,0,sizeof(pageDir));
+    
+    char* c = (char*)malloc(PAGE_SIZE);
+    memset(c,0,PAGE_SIZE);
+    fileWriter(c, PAGE_SIZE, filePage->pageId);
+}
+
+int 
+fileWriter(char* c, int char_offset, int pageNum){
+    
+    if(char_offset>PAGE_SIZE||char_offset<0) {
+        return -1;
+    }
+    
+    FILE *fp = fopen("hardDrive", "r+");
+
+    fseek(fp, pageNum*PAGE_SIZE , SEEK_SET);
+    fwrite(c, sizeof(char), char_offset, fp);
+    fclose(fp);
+    
     return 0;
 }
 
@@ -272,11 +393,23 @@ int
 find_free_frame(){
     int i;
     for(i = 0; i < MAX_PAGE; i++){
-        if(GET_FREE_PAGE(pages[i]) == 0){
+        if(pages[i]->threadPtr->in_use_state == 0){
             return i;
         }
     }
-    perror("Error: cannot find available page!\n");
+    printf(("Memory Full!\n"));
+    return -1;
+}
+
+int
+find_free_file_frame(){
+    int i;
+    for(i = 0; i < MAX_FILE_PAGE; i++){
+        if(filePages[i]->threadPtr->in_use_state == 0){
+            return i;
+        }
+    }
+    perror("Error: Hard Drive Full!\n");
     return -1;
 }
 
@@ -306,6 +439,16 @@ swap_frame(memoryManager* oldPage, memoryManager* newPage){
     pages[newPage->pageId]->threadPtr = pages[oldPage->pageId]->threadPtr;
     pages[newPage->pageId]->threadPtr->page_redirect = newPage->pageId;
     
+    char* tmpstate = oldPage->mem_state; 
+    oldPage->mem_state = newPage->mem_state;
+    newPage->mem_state = tmpstate;
+    
+    
+    char* tmpheap_listp = oldPage->heap_listp; 
+    oldPage->heap_listp = newPage->heap_listp;
+    newPage->heap_listp = tmpheap_listp;
+    
+    
     //pages[oldPage->pageId]->threadPtr = getCurrentRunningThread()->pageTable[oldPage->pageId];
     allocateFrame(getCurrentRunningThread(), oldPage->pageId);  
     
@@ -319,19 +462,16 @@ swap_frame(memoryManager* oldPage, memoryManager* newPage){
 void
 page_protect(int flag){
     printf("%d protect page for thread %d\n", flag, getCurrentRunningThread()->_self_id);
-
-    for(int i = 0; i < MAX_PAGE; i++){
-        if(getCurrentRunningThread()->pageTable[i]->in_use_state == 0 || getCurrentRunningThread()->pageTable[i]->page_redirect != i ){
-            if(flag == 0){
-               mprotect(pages[i]->mem_heap, PAGE_SIZE, PROT_NONE);
-            }else if(flag == 1){
-                mprotect(pages[i]->mem_heap, PAGE_SIZE, PROT_READ | PROT_WRITE);
-            }else{
-                perror("unrecognized flag!\n");
-                return;
-            }
-        }
+    
+    printf("Thread %d can use page: ",getCurrentRunningThread()->_self_id);
+    for(int i = 0; i < MAX_PAGE; i++){ 
+        if(getCurrentRunningThread()->pageTable[i]->in_use_state == 0 || getCurrentRunningThread()->pageTable[i]->in_memory_state == 0 || getCurrentRunningThread()->pageTable[i]->page_redirect != i ){
+            PROTECT_PAGE(pages[i], flag);
+        }else{
+            printf("%d. ",i);
+        } 
     }
+    printf("\n");
 }
 
 static void 
@@ -393,16 +533,21 @@ page_malloc(memoryManager* page, size_t size){
      */
     int frame;
     if((frame = find_free_frame()) != -1){
+        PROTECT_PAGE(nextPage,1);
+        PROTECT_PAGE(pages[frame],1);
         //swap the next to this new frame
         swap_frame(nextPage, pages[frame]);
         //use this next frame
-        
+        PROTECT_PAGE(pages[frame],0);
+        return page_malloc(nextPage, size);
     }
-    if(pages[frame]->heap_listp == 0){
-            //page_init(pages[frame]);
+    int pageNum;
+    if((int pageNum = find_free_file_frame())!=-1){
+        mem_to_file(nextPage);
+        return page_malloc(nextPage, size);
     }
     
-        
+    
     
     /* update a new assigned current page for the current thread */
     //updateFrame(getCurrentRunningThread());
@@ -565,7 +710,7 @@ static void *find_fit(void* page, size_t asize)
     /* First fit search */
     void *bp;
     for (bp = ((memoryManager*)page)->heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {  
-        printf("bp: %p, size: %p, next: %p, alloc: %d, blocksize: %d\n",bp,GET_SIZE(HDRP(bp)),NEXT_BLKP(bp),GET_ALLOC(HDRP(bp)),GET_SIZE(HDRP(bp)));
+        //printf("bp: %p, size: %p, next: %p, alloc: %d, blocksize: %d\n",bp,GET_SIZE(HDRP(bp)),NEXT_BLKP(bp),GET_ALLOC(HDRP(bp)),GET_SIZE(HDRP(bp)));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
@@ -617,6 +762,19 @@ pageProtect_handler(int sig, siginfo_t *si, void* unused){
     printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
     int pageNum = getPageNumFromAddr(si->si_addr);
     printf("Page Number is %d.\n",pageNum);
+    if(GET_FREE_PAGE(pages[pageNum])==0){
+        PROTECT_PAGE(pages[pageNum], 1);
+    }else if(getCurrentRunningThread()->pageTable[pageNum]->in_memory_state==0){
+        PROTECT_PAGE(pages[pageNum],1);
+        mem_to_file(pages[pageNum]);
+        file_to_mem(filePages[getCurrentRunningThread()->pageTable[pageNum]->page_redirect], pages[pageNum]);
+    }else if(getCurrentRunningThread()->pageTable[pageNum]->page_redirect!=pageNum){
+        int newPageNum = getCurrentRunningThread()->pageTable[pageNum]->page_redirect;
+        PROTECT_PAGE(pages[pageNum],1);
+        PROTECT_PAGE(pages[newPageNum],1);
+        swap_frame(pages[pageNum], pages[getCurrentRunningThread()->pageTable[pageNum]->page_redirect]);
+        PROTECT_PAGE(pages[newPageNum],0);
+    }
     sleep(2);
 }
 
@@ -640,8 +798,7 @@ mem_printf(void){
     }
 }
 
-#define handle_error(msg) \
-           do { perror(msg); exit(EXIT_FAILURE); } while (0)
+
 void test_pageProtect(){
     char* emulated_memory;
     posix_memalign( (void*)(&emulated_memory), sysconf(_SC_PAGE_SIZE),PAGE_SIZE);
@@ -718,12 +875,16 @@ void test_check_state(){
 }
 
  int
- min(){
+ man(){
     
      //test_swap();
+     
+     file_init();
+     
 
     mem_init();
-    
+    int i = find_free_file_frame();
+    printf("%d\n",i);
     
     
      /*

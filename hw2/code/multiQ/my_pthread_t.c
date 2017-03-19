@@ -526,12 +526,13 @@ signal_handler(int sig, siginfo_t *siginfo, void* context){
  * alloc a frame
  */
 void allocateFrame(my_pthread_t* thread, int frame){
+    printf("Allocate Page %d to thread %d.\n",frame,thread->_self_id);
     thread->pageTable[frame]->in_memory_state = 1;
     thread->pageTable[frame]->in_use_state = 1;
     thread->pageTable[frame]->page_redirect = frame;
     setPageTableThreadPtr(thread->pageTable[frame], frame);
     thread->currentUsePage = frame;
-    SET_USE_PAGE(pages[frame]);
+    //SET_USE_PAGE(pages[frame]);
 }
 //
 ///*
@@ -651,6 +652,8 @@ start(){
      */
     signal_init();
     
+    file_init();
+    
     seg_fault_handle_init();
     
     /*
@@ -682,16 +685,32 @@ int sum(int num){
 }
 
 void*
-test1(int num){
+test1(int thread_num){
     int static times = 0;
     times ++;
-    char* p = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
-    sum(num);
+    int* p;
+    p = (int*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
+    *p = 520;
+    //strcpy(p, "HelloHelloHelloHelloHelloHello");
     
-    while(times<2){
+    while(times<thread_num){
         
     }
-    char* p1 = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
+    times ++;
+    if(getCurrentRunningThread()->_self_id == 0){
+        char* p1 = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
+        strcpy(p1, "WorldWorldWorldWorldWorldWorld");
+    }
+    if(getCurrentRunningThread()->_self_id == 1){
+        //char* p1 = (char*)myallocate(PAGE_SIZE-100, __FILE__, __LINE__, 1);
+        int x = *p*10;
+        printf("X equals to %d\n",x);
+    }
+    
+    while(times < 2*thread_num){
+        
+    }
+    
     //mydeallocate(p,  __FILE__, __LINE__, 1);
 
     return NULL;
@@ -722,7 +741,7 @@ int
 main(){
     
     
-    const int threadNum = 2;
+    int threadNum = 5;
     
     start();
     timeStart = clock();
@@ -731,7 +750,7 @@ main(){
     
     int i;
     for(i = 0; i < threadNum; i++){
-        my_pthread_create(&thread[i], NULL, &test1, 100);
+        my_pthread_create(&thread[i], NULL, &test1, threadNum);
     }
     
     while(1){
