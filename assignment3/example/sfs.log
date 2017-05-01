@@ -1,0 +1,301 @@
+
+sfs_init()
+    conn:
+    proto_major = 7
+    proto_minor = 23
+    async_read = 1
+    max_write = 131072
+    max_readahead = 131072
+    capable = 00000ffb
+    want = 00000010
+    context:
+    fuse = 01baf520
+    uid = 0
+    gid = 0
+    pid = 0
+    private_data = 01bae010
+    logfile = 01baf060
+    diskfile = /home/csuser/sample/assignment3/disk
+    umask = 00000
+    si:
+    st_dev = 64774
+    st_ino = 130859
+    st_mode = 0100664
+    st_nlink = 1
+    st_uid = 1001
+    st_gid = 1001
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 4096
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+	start initialization
+	writing the 3 block(inode)
+	writing the 4 block(inode)
+	writing the 5 block(inode)
+	writing the 6 block(inode)
+	writing the 7 block(inode)
+	writing the 8 block(inode)
+	writing the 9 block(inode)
+	writing the 10 block(inode)
+	writing the 11 block(inode)
+	writing the 12 block(inode)
+	writing the 13 block(inode)
+	writing the 14 block(inode)
+	writing the 15 block(inode)
+	writing the 16 block(inode)
+	writing the 17 block(inode)
+	writing the 18 block(inode)
+	writing the 19 block(inode)
+	writing the 20 block(inode)
+	writing the 21 block(inode)
+	writing the 22 block(inode)
+     writing the 23 block(datablock)
+     writing the 24 block(datablock)
+     writing the 25 block(datablock)
+     writing the 26 block(datablock)
+     writing the 27 block(datablock)
+     writing the 28 block(datablock)
+     writing the 29 block(datablock)
+     writing the 30 block(datablock)
+     writing the 31 block(datablock)
+     writing the 32 block(datablock)
+     writing the 33 block(datablock)
+     writing the 34 block(datablock)
+     writing the 35 block(datablock)
+     writing the 36 block(datablock)
+     writing the 37 block(datablock)
+     writing the 38 block(datablock)
+     writing the 39 block(datablock)
+     writing the 40 block(datablock)
+     writing the 41 block(datablock)
+     writing the 42 block(datablock)
+     writing the 43 block(datablock)
+     writing the 44 block(datablock)
+     writing the 45 block(datablock)
+     writing the 46 block(datablock)
+     writing the 47 block(datablock)
+     writing the 48 block(datablock)
+     writing the 49 block(datablock)
+     writing the 50 block(datablock)
+     writing the 51 block(datablock)
+     writing the 52 block(datablock)
+     writing the 53 block(datablock)
+     writing the 54 block(datablock)
+     writing the 55 block(datablock)
+     writing the 56 block(datablock)
+     writing the 57 block(datablock)
+     writing the 58 block(datablock)
+     writing the 59 block(datablock)
+     writing the 60 block(datablock)
+     writing the 61 block(datablock)
+     writing the 62 block(datablock)
+     writing the 63 block(datablock)
+     writing the 64 block(datablock)
+     writing the 65 block(datablock)
+     writing the 66 block(datablock)
+     writing the 67 block(datablock)
+     writing the 68 block(datablock)
+     writing the 69 block(datablock)
+     writing the 70 block(datablock)
+     writing the 71 block(datablock)
+     writing the 72 block(datablock)
+     writing the 73 block(datablock)
+     writing the 74 block(datablock)
+     writing the 75 block(datablock)
+     writing the 76 block(datablock)
+     writing the 77 block(datablock)
+     writing the 78 block(datablock)
+	supper block:
+               total size:40448
+               total data blks:56
+               total inode number:80
+               total free data blk number:56
+               inode bitmap:1
+               data blk bitmap:2
+               inode root:3
+               datablock begin:23
+
+	inode bitmap:01111111111111111111111111111111111111111111111111111111111111111111111111111111
+	datablock bitmap:11111111111111111111111111111111111111111111111111111111
+
+	inode root:
+	inode num:0
+           inode type:0
+           inode time:1493610423
+           inode mode:16877
+
+sfs_getattr(path="/", statbuf=0x129b6bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_getattr(path="/", statbuf=0x121b5bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_getattr(path="/", statbuf=0x129b6bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_getattr(path="/", statbuf=0x121b5bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_opendir(path="/", fi=0x129b6c50)
+
+	token (null)
+     get inode 0    fi:
+    flags = 0x00038800
+    fh_old = 0x00000000
+    writepage = 0
+    direct_io = 0
+    keep_cache = 0
+    fh = 0x0000000000000000
+    lock_owner = 0x0000000000000000
+
+     path /
+sfs_readdir(path="/")
+
+	token (null)
+     get inode 0    fi:
+    flags = 0x00000000
+    fh_old = 0x00000000
+    writepage = 0
+    direct_io = 0
+    keep_cache = 0
+    fh = 0x0000000000000000
+    lock_owner = 0x0000000000000000
+
+     path /
+	token (null)
+     get inode 0    fi:
+    flags = 0x00000000
+    fh_old = 0x00000000
+    writepage = 0
+    direct_io = 0
+    keep_cache = 0
+    fh = 0x0000000000000000
+    lock_owner = 0x0000000000000000
+
+     path /
+sfs_getattr(path="/", statbuf=0x121b5bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_getattr(path="/", statbuf=0x129b6bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_getattr(path="/", statbuf=0x121b5bf0)
+
+	token (null)
+	get inode 0
+    si:
+    st_dev = 0
+    st_ino = 0
+    st_mode = 040755
+    st_nlink = 0
+    st_uid = 0
+    st_gid = 0
+    st_rdev = 0
+    st_size = 0
+    st_blksize = 0
+    st_blocks = 0
+    st_atime = 0x5906afb7
+    st_mtime = 0x5906afb7
+    st_ctime = 0x5906afb7
+
+sfs_destroy(userdata=0x01bae010)

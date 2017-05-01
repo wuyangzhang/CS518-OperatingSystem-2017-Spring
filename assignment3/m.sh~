@@ -1,0 +1,9 @@
+cd example
+fusermount -u mountdir
+cd ..
+./configure
+make
+rm disk
+touch disk
+cd example
+../src/sfs /home/csuser/sample/assignment3/disk mountdir
